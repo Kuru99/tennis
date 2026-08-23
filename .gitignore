@@ -1,0 +1,48 @@
+# Unity generated folders
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+/.utmp/
+/Assets/_Recovery/
+/Assets/_Recovery.meta
+
+# IDE and generated project files
+/.vs/
+/.idea/
+*.csproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+__pycache__/
+*.py[cod]
+
+# Local credentials and optional third-party packages
+/Assets/StreamingAssets/EOS/
+/Assets/StreamingAssets/EOS.meta
+/Packages/ThirdParty/
+/Packages/ThirdParty.meta
+*.keystore
+*.jks
+*.p12
+*.pem
+
+# Local release artifacts
+/*.apk
+/*.aab
+/*.zip
+crash.dmp
+sysinfo.txt

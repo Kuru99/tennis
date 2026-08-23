@@ -1,0 +1,17 @@
+* text=auto eol=lf
+
+*.cs text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.xml text eol=lf
+*.shader text eol=lf
+*.unity text eol=lf merge=unityyamlmerge whitespace=-blank-at-eol
+*.prefab text eol=lf merge=unityyamlmerge whitespace=-blank-at-eol
+*.asset text eol=lf merge=unityyamlmerge whitespace=-blank-at-eol
+*.mat text eol=lf merge=unityyamlmerge whitespace=-blank-at-eol
+*.meta text eol=lf whitespace=-blank-at-eol
+
+*.png binary
+*.ttf binary
+*.wav binary
+*OFL.txt text eol=lf whitespace=-blank-at-eol
