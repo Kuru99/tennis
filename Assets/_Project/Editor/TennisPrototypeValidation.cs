@@ -23,6 +23,8 @@ namespace PrideCourt.Editor
         {
             ValidateScoring();
             ValidateStamina();
+            ValidateSpecialGauge();
+            ValidateAthleteBalance();
             ValidateCards();
             ValidateDifficulty();
             ValidateDashInput();
@@ -33,6 +35,7 @@ namespace PrideCourt.Editor
             ValidateLineTouchAndTrajectory();
             ValidateUiTheme();
             ValidateFrontEndFlow();
+            ValidateSetupFlow();
             ValidateSettingsPolicy();
             ValidateLanProtocol();
             ValidateLanLoopbackTransport();
@@ -59,9 +62,11 @@ namespace PrideCourt.Editor
                 "The title screen must lead to game-mode selection.");
             Require(flow.Apply(FrontEndAction.SelectMultiplayer) && flow.Screen == FrontEndScreen.MultiplayerSelect,
                 "Multiplayer must lead to its local/network submenu.");
-            Require(flow.Apply(FrontEndAction.SelectLocal) && flow.Screen == FrontEndScreen.LocalNetworkLobby &&
+            Require(flow.Apply(FrontEndAction.SelectLocal) && flow.Screen == FrontEndScreen.Setup &&
                     flow.PendingMultiplayerEntry == MultiplayerEntry.Local,
-                "Local multiplayer must lead to the LAN host/join lobby.");
+                "Local multiplayer must configure its character and loadout before the LAN lobby.");
+            Require(flow.Apply(FrontEndAction.ReturnToLocalLobby) && flow.Screen == FrontEndScreen.LocalNetworkLobby,
+                "Completing local setup must lead to the LAN host/join lobby.");
             Require(flow.Apply(FrontEndAction.Back) && flow.Screen == FrontEndScreen.MultiplayerSelect,
                 "The LAN lobby must return to multiplayer selection.");
             Require(!PrideCourtFrontEndFlow.NetworkBattleAvailable &&
@@ -75,6 +80,22 @@ namespace PrideCourt.Editor
                 "Solo play must lead to the existing character and deck setup.");
             Require(flow.Apply(FrontEndAction.ReturnToTitle) && flow.Screen == FrontEndScreen.Title,
                 "The pause settings must be able to return directly to the title screen.");
+        }
+
+        private static void ValidateSetupFlow()
+        {
+            PrideCourtSetupFlow flow = new PrideCourtSetupFlow();
+            Require(flow.Step == SetupStep.CharacterSelect,
+                "Pre-match setup must begin with character selection.");
+            Require(flow.Apply(SetupAction.ConfirmCharacter) && flow.Step == SetupStep.CardLoadout,
+                "Confirming a character must lead to card loadout selection.");
+            Require(!flow.Apply(SetupAction.ConfirmCharacter) && flow.Step == SetupStep.CardLoadout,
+                "Card loadout selection must not skip or repeat setup stages.");
+            Require(flow.Apply(SetupAction.Back) && flow.Step == SetupStep.CharacterSelect,
+                "Card loadout selection must return to the character roster.");
+            flow.Reset();
+            Require(flow.Step == SetupStep.CharacterSelect,
+                "Returning to setup must reset the two-stage flow.");
         }
 
         private static void ValidateSettingsPolicy()
@@ -112,6 +133,22 @@ namespace PrideCourt.Editor
                 "LAN settings-pause requests must preserve the requested state.");
             Require(!LanBattleProtocol.DecodeSettingsPause(LanBattleProtocol.EncodeSettingsPause(false)),
                 "LAN settings-resume requests must preserve the requested state.");
+            LanMatchState restoredScore = LanBattleProtocol.DecodeSnapshot(LanBattleProtocol.EncodeSnapshot(
+                new LanMatchState
+                {
+                    NearPoints = 4,
+                    FarPoints = 2,
+                    NearGames = 1,
+                    FarGames = 0,
+                    GamesToWin = 3,
+                    CompletedPoints = 18,
+                    StatusMessage = "GAME SCORE"
+                }));
+            Require(restoredScore.NearPoints == 4 && restoredScore.FarPoints == 2 &&
+                    restoredScore.NearGames == 1 && restoredScore.FarGames == 0 &&
+                    restoredScore.GamesToWin == 3 &&
+                    restoredScore.CompletedPoints == 18,
+                "LAN snapshots must preserve the selected local match length, score, and service order.");
             byte[] framed = LanBattleProtocol.Frame(LanPacketType.Hello, new byte[] { 3, 7, 11 });
             Require(LanBattleProtocol.TryParseFrame(framed, out LanPacket packet) &&
                     packet.Type == LanPacketType.Hello && packet.Payload.SequenceEqual(new byte[] { 3, 7, 11 }),
@@ -166,6 +203,49 @@ namespace PrideCourt.Editor
             EditorApplication.Exit(0);
         }
 
+        public static void ValidateBackhandFromCommandLine()
+        {
+            ValidateStrokeMotion();
+            Debug.Log("PRIDE_COURT_BACKHAND_STATIC_VALIDATION_PASSED");
+            EditorApplication.Exit(0);
+        }
+
+        public static void ValidateMatchFormatFromCommandLine()
+        {
+            ValidateScoring();
+            ValidateLanProtocol();
+            Debug.Log("PRIDE_COURT_TWO_GAME_MATCH_STATIC_VALIDATION_PASSED");
+            EditorApplication.Exit(0);
+        }
+
+        public static void ValidateLocalMatchOptionsFromCommandLine()
+        {
+            ValidateScoring();
+            ValidateStamina();
+            ValidateLanProtocol();
+            Debug.Log("PRIDE_COURT_LOCAL_MATCH_OPTIONS_STATIC_VALIDATION_PASSED");
+            EditorApplication.Exit(0);
+        }
+
+        public static void ValidateBastionHitRadiusFromCommandLine()
+        {
+            ValidateAthleteBalance();
+            Debug.Log("PRIDE_COURT_BASTION_HIT_RADIUS_STATIC_VALIDATION_PASSED");
+            EditorApplication.Exit(0);
+        }
+
+        private static void ValidateAthleteBalance()
+        {
+            float luxRadius = AthleteCatalog.Get(AthleteIdentity.Lux).Stats.HitRadius;
+            float bastionRadius = AthleteCatalog.Get(AthleteIdentity.Bastion).Stats.HitRadius;
+            Require(Mathf.Approximately(luxRadius, 2.05f),
+                "Lux hit radius changed while tuning Bastion.");
+            Require(Mathf.Approximately(bastionRadius, 2.35f),
+                "Bastion hit radius must use the approved 2.35m value.");
+            Require(bastionRadius > luxRadius,
+                "Bastion must retain a wider defensive reach than Lux.");
+        }
+
         private static void ValidateScoring()
         {
             MatchScore score = new MatchScore();
@@ -175,44 +255,118 @@ namespace PrideCourt.Editor
             score.AwardPoint(CourtSide.Near);
             Require(!score.IsMatchOver, "6-5 must not end the match.");
             score.AwardPoint(CourtSide.Near);
-            Require(score.TryGetWinner(out CourtSide winner) && winner == CourtSide.Near, "7-5 must be a Near win.");
+            Require(score.NearGames == 1 && score.FarGames == 0 &&
+                    score.NearPoints == 0 && score.FarPoints == 0 && !score.IsMatchOver,
+                "7-5 must award Near one game and reset the point score without ending the match.");
+
+            for (int i = 0; i < MatchScore.MinimumWinningPoints; i++) score.AwardPoint(CourtSide.Far);
+            Require(score.NearGames == 1 && score.FarGames == 1 &&
+                    score.NearPoints == 0 && score.FarPoints == 0 && !score.IsMatchOver,
+                "A Far 6-0 game must level the match at one game each.");
+
+            for (int i = 0; i < MatchScore.MinimumWinningPoints; i++) score.AwardPoint(CourtSide.Near);
+            Require(score.NearGames == score.GamesToWin && score.FarGames == 1 &&
+                    score.NearPoints == MatchScore.MinimumWinningPoints && score.FarPoints == 0 &&
+                    score.TryGetWinner(out CourtSide winner) && winner == CourtSide.Near,
+                "The second Near game must end the match at two games to one.");
+
+            MatchScore oneGameMatch = new MatchScore();
+            oneGameMatch.ConfigureGamesToWin(1);
+            AwardGame(oneGameMatch, CourtSide.Near);
+            Require(oneGameMatch.IsMatchOver && oneGameMatch.NearGames == 1,
+                "A one-game local match must end after the first completed game.");
+
+            MatchScore threeGameMatch = new MatchScore();
+            threeGameMatch.ConfigureGamesToWin(3);
+            AwardGame(threeGameMatch, CourtSide.Far);
+            AwardGame(threeGameMatch, CourtSide.Far);
+            Require(!threeGameMatch.IsMatchOver && threeGameMatch.FarGames == 2,
+                "A three-game local match must continue after two completed games.");
+            AwardGame(threeGameMatch, CourtSide.Far);
+            Require(threeGameMatch.IsMatchOver && threeGameMatch.FarGames == 3,
+                "A three-game local match must end after the third completed game.");
 
             MatchScore serverScore = new MatchScore();
             Require(serverScore.Server == CourtSide.Near, "Near must serve first.");
             serverScore.AwardPoint(CourtSide.Far);
             Require(serverScore.Server == CourtSide.Far, "Serve must alternate every point.");
+
+            MatchScore restoredScore = new MatchScore();
+            restoredScore.Restore(3, 4, 1, 0, 19, 3);
+            Require(restoredScore.NearPoints == 3 && restoredScore.FarPoints == 4 &&
+                    restoredScore.NearGames == 1 && restoredScore.FarGames == 0 &&
+                    restoredScore.GamesToWin == 3 &&
+                    restoredScore.CompletedPoints == 19,
+                "Score restore must preserve points, games, selected match length, and service order.");
+        }
+
+        private static void AwardGame(MatchScore score, CourtSide winner)
+        {
+            for (int i = 0; i < MatchScore.MinimumWinningPoints; i++) score.AwardPoint(winner);
         }
 
         private static void ValidateStamina()
         {
             StaminaState stamina = new StaminaState();
-            Require(stamina.TrySpend(100f), "Full stamina spend must succeed.");
+            Require(Math.Abs(StaminaState.Maximum - 80f) < 0.001f,
+                "The shared maximum stamina must use the approved 80-percent value.");
+            Require(stamina.TrySpend(StaminaState.Maximum), "Full stamina spend must succeed.");
             Require(stamina.IsExhausted, "Zero stamina must enter exhaustion.");
             stamina.TickRecovery(StaminaState.RecoveryDelayAfterSpend, false, true);
-            stamina.Restore(79f);
+            stamina.Restore(StaminaState.ExhaustionRecoveryThreshold - 1f);
             Require(stamina.IsExhausted, "Exhaustion must remain below 80 percent.");
             stamina.Restore(1f);
             Require(!stamina.IsExhausted, "Exhaustion must clear at 80 percent.");
             stamina.ResetForPoint();
             Require(Math.Abs(stamina.Current - StaminaState.Maximum) < 0.001f, "Point reset must fully restore stamina.");
 
-            Require(stamina.TrySpend(85f), "Stamina setup spend must succeed.");
+            Require(stamina.TrySpend(StaminaState.Maximum - 15f), "Stamina setup spend must succeed.");
             Require(stamina.TrySpendCommitted(25f), "A committed dive must still start with partial stamina.");
             Require(stamina.IsExhausted && Math.Abs(stamina.Current) < 0.001f,
                 "A partial-stamina dive must consume the remainder and enter exhaustion.");
             Require(!stamina.TrySpendCommitted(25f), "A committed dive must not start from zero stamina.");
         }
 
+        private static void ValidateSpecialGauge()
+        {
+            SpecialGaugeState gauge = new SpecialGaugeState();
+            Require(Math.Abs(SpecialGaugeState.Maximum - 50f) < 0.001f,
+                "Special gauge maximum must be 50 percent of the original 100-point maximum.");
+            Require(Math.Abs(SpecialGaugeState.ActivationThreshold - SpecialGaugeState.Maximum) < 0.001f,
+                "Special activation must require the full gauge.");
+            gauge.Add(SpecialGaugeState.ActivationThreshold - 0.01f);
+            Require(!gauge.IsReady, "Special activation must remain locked just below the maximum gauge.");
+            gauge.Add(0.01f);
+            Require(gauge.IsReady, "Special activation must unlock at the 50-point maximum gauge.");
+            Require(gauge.TryConsumeAll() && Math.Abs(gauge.Current) < 0.001f,
+                "Activating a special must consume the stored gauge.");
+        }
+
         private static void ValidateLineTouchAndTrajectory()
         {
             const float ballRadius = 0.16f;
+            Require(Mathf.Approximately(TennisCourtGeometry.CourtWidthMultiplier, 1.5f),
+                "The court width multiplier must remain at the approved 1.5x value.");
+            Require(Mathf.Approximately(TennisCourtGeometry.LateralScale,
+                    TennisCourtGeometry.Scale * TennisCourtGeometry.CourtWidthMultiplier),
+                "Lateral gameplay geometry must share the approved court-width multiplier.");
             float lineTouchLimit = TennisCourtGeometry.HalfWidth + TennisCourtGeometry.LineWidth * 0.5f + ballRadius;
             Require(TennisCourtGeometry.IsBallInSingles(lineTouchLimit - 0.001f, 0f, ballRadius),
                 "A ball grazing the singles sideline must be in.");
             Require(!TennisCourtGeometry.IsBallInSingles(lineTouchLimit + 0.001f, 0f, ballRadius),
                 "A ball fully outside the singles sideline must be out.");
+            Require(TennisCourtGeometry.IsInsideSimulationBounds(TennisCourtGeometry.HalfWidth + 0.25f, 0f, ballRadius),
+                "The simulation failsafe must retain the expanded court width before resolving an out-of-bounds flight.");
+            Require(!TennisCourtGeometry.IsInsideSimulationBounds(
+                    TennisCourtGeometry.VisualWidth * 0.5f + ballRadius + TennisCourtGeometry.LineWidth + 0.001f,
+                    0f,
+                    ballRadius),
+                "The simulation failsafe must still terminate a ball that has cleared the expanded court envelope.");
             Require(TennisCourtGeometry.IsBallInServiceBox(-ballRadius * 0.8f, 3f, CourtSide.Near, 1f, ballRadius),
                 "A serve grazing the center service line must be in.");
+            Require(TennisCourtGeometry.IsBallInServiceBox(3f, 3f, CourtSide.Near, 1f, ballRadius) &&
+                    !TennisCourtGeometry.IsBallInServiceBox(3f, 3f, CourtSide.Near, -1f, ballRadius),
+                "A serve's service-box side must remain tied to the strike-time horizontal sign.");
 
             Vector3 start = new Vector3(-1.2f, 0.52f, -8f);
             Vector3 target = new Vector3(3.8f, 0.25f, 8.2f);
@@ -259,6 +413,9 @@ namespace PrideCourt.Editor
                 "Stadium punk banner is missing.");
             StadiumEnvironment stadium = UnityEngine.Object.FindAnyObjectByType<StadiumEnvironment>();
             Require(stadium != null, "Pop-punk fantasy stadium environment is missing.");
+            Require(Mathf.Approximately(stadium.transform.localScale.x,
+                    TennisCourtGeometry.CourtWidthMultiplier),
+                "The stadium surroundings must expand with the court width.");
             Require(stadium.GetComponentsInChildren<Collider>(true).Length == 0,
                 "Stadium presentation objects must not affect gameplay collisions.");
             Require(UnityEngine.Object.FindAnyObjectByType<TennisMatchController>() != null, "Match controller is missing.");
@@ -277,16 +434,20 @@ namespace PrideCourt.Editor
                 "Ball effect audio source must be an unmuted 2D source with play-on-awake disabled.");
             Require(UnityEngine.Object.FindObjectsByType<AudioListener>(FindObjectsInactive.Exclude).Length == 1,
                 "The MVP scene must have exactly one active audio listener.");
-            Require(AssetDatabase.LoadAssetAtPath<GameObject>(TennisGeneratedModelIntegrator.LuxRiggedPrefabPath) != null,
-                "Lux rigged prefab is missing.");
-            Require(AssetDatabase.LoadAssetAtPath<GameObject>(TennisGeneratedModelIntegrator.BastionRiggedPrefabPath) != null,
-                "Bastion rigged prefab is missing.");
+            foreach (AthleteIdentity identity in AthleteCatalog.All)
+                Require(AssetDatabase.LoadAssetAtPath<GameObject>(TennisGeneratedModelIntegrator.GetRiggedPrefabPath(identity)) != null,
+                    AthleteCatalog.Get(identity).InternalName + " rigged prefab is missing.");
             foreach (TennisAthleteController athlete in UnityEngine.Object.FindObjectsByType<TennisAthleteController>(FindObjectsInactive.Exclude))
             {
-                Require(athlete.transform.Find("Lux Silhouette") != null, "Athlete is missing the Lux generated visual.");
-                Require(athlete.transform.Find("Bastion Silhouette") != null, "Athlete is missing the Bastion generated visual.");
+                foreach (AthleteIdentity identity in AthleteCatalog.All)
+                {
+                    string silhouette = AthleteCatalog.Get(identity).InternalName + " Silhouette";
+                    Require(athlete.transform.Find(silhouette) != null,
+                        "Athlete is missing the " + silhouette + " generated visual.");
+                }
                 GeneratedCharacterRig[] rigs = athlete.GetComponentsInChildren<GeneratedCharacterRig>(true);
-                Require(rigs.Length == 2, "Athlete must retain both generated character rigs for identity switching.");
+                Require(AthleteCatalog.All.All(identity => rigs.Any(rig => rig.Identity == identity)),
+                    "Athlete must retain every implemented generated character rig for identity switching.");
                 foreach (GeneratedCharacterRig rig in rigs)
                 {
                     Require(rig.IsRigBuilt, "Generated character rig was not built.");
@@ -302,6 +463,33 @@ namespace PrideCourt.Editor
             Require(Mathf.Approximately(court.transform.localScale.x, TennisCourtGeometry.VisualWidth) &&
                     Mathf.Approximately(court.transform.localScale.z, TennisCourtGeometry.VisualLength),
                 "Court visual and gameplay geometry must use the shared enlarged dimensions.");
+            BoxCollider courtCollider = court.GetComponent<BoxCollider>();
+            Require(courtCollider != null &&
+                    Mathf.Approximately(courtCollider.bounds.size.x, TennisCourtGeometry.VisualWidth) &&
+                    Mathf.Approximately(courtCollider.bounds.size.z, TennisCourtGeometry.VisualLength),
+                "The court physics collider must cover the same enlarged dimensions as the visible court.");
+            TennisNetSurface net = UnityEngine.Object.FindAnyObjectByType<TennisNetSurface>();
+            Require(net != null && Mathf.Approximately(net.transform.localScale.x,
+                    TennisCourtGeometry.NetVisualWidth),
+                "The net must span the enlarged court width.");
+            Transform leftSideline = GameObject.Find("Left Sideline")?.transform;
+            Transform rightSideline = GameObject.Find("Right Sideline")?.transform;
+            Require(leftSideline != null && rightSideline != null &&
+                    Mathf.Approximately(leftSideline.position.x, -TennisCourtGeometry.HalfWidth) &&
+                    Mathf.Approximately(rightSideline.position.x, TennisCourtGeometry.HalfWidth),
+                "The rendered sidelines must match the enlarged in/out boundary.");
+            Transform nearBaseline = GameObject.Find("Near Baseline")?.transform;
+            Transform farBaseline = GameObject.Find("Far Baseline")?.transform;
+            Transform nearService = GameObject.Find("Near Service")?.transform;
+            Transform farService = GameObject.Find("Far Service")?.transform;
+            Require(nearBaseline != null && farBaseline != null &&
+                    Mathf.Approximately(nearBaseline.localScale.x, TennisCourtGeometry.BaselineVisualWidth) &&
+                    Mathf.Approximately(farBaseline.localScale.x, TennisCourtGeometry.BaselineVisualWidth),
+                "Both baselines must span the enlarged court width.");
+            Require(nearService != null && farService != null &&
+                    Mathf.Approximately(nearService.localScale.x, TennisCourtGeometry.ServiceLineVisualWidth) &&
+                    Mathf.Approximately(farService.localScale.x, TennisCourtGeometry.ServiceLineVisualWidth),
+                "Both service lines must span the enlarged service boxes.");
         }
 
         private static void ValidateNetDeflection()
@@ -455,11 +643,18 @@ namespace PrideCourt.Editor
             }
 
             var preset = CardCatalog.BuildPreset(AthleteIdentity.Lux);
-            Require(preset.Count == 16, "Preset deck must contain exactly 16 cards.");
-            var bastionPreset = CardCatalog.BuildPreset(AthleteIdentity.Bastion);
-            Require(bastionPreset.Count == 16, "Bastion preset deck must contain exactly 16 cards.");
-            for (int i = 0; i < preset.Count; i++) Require(CardCatalog.IsAllowedFor(preset[i], AthleteIdentity.Lux), "Lux preset contains an illegal card.");
-            for (int i = 0; i < bastionPreset.Count; i++) Require(CardCatalog.IsAllowedFor(bastionPreset[i], AthleteIdentity.Bastion), "Bastion preset contains an illegal card.");
+            foreach (AthleteIdentity identity in AthleteCatalog.All)
+            {
+                var identityPreset = CardCatalog.BuildPreset(identity);
+                Require(identityPreset.Count == 16, identity + " preset deck must contain exactly 16 cards.");
+                for (int i = 0; i < identityPreset.Count; i++)
+                    Require(CardCatalog.IsAllowedFor(identityPreset[i], identity),
+                        identity + " preset contains an illegal card.");
+                Require(Resources.Load<Texture2D>("CharacterPortraits/" + identity) != null,
+                    identity + " static character portrait is missing.");
+                Require(Resources.Load<Texture2D>("SpecialCutIns/" + identity) != null,
+                    identity + " static special cut-in is missing.");
+            }
             DeckState deck = new DeckState(preset, 101);
             CardHandState hand = new CardHandState();
             for (int i = 0; i < 3; i++) Require(hand.TryAdd(deck.Draw()), "Opening hand must accept three cards.");

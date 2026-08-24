@@ -135,16 +135,16 @@ namespace PrideCourt.Editor
 
             CreateLine("Left Sideline", new Vector3(-TennisCourtGeometry.HalfWidth, 0.015f, 0f), new Vector3(0.07f, 0.025f, TennisCourtGeometry.VisualLength), lineMaterial);
             CreateLine("Right Sideline", new Vector3(TennisCourtGeometry.HalfWidth, 0.015f, 0f), new Vector3(0.07f, 0.025f, TennisCourtGeometry.VisualLength), lineMaterial);
-            CreateLine("Near Baseline", new Vector3(0f, 0.015f, -11.85f * TennisCourtGeometry.Scale), new Vector3(11.05f * TennisCourtGeometry.Scale, 0.025f, 0.07f), lineMaterial);
-            CreateLine("Far Baseline", new Vector3(0f, 0.015f, 11.85f * TennisCourtGeometry.Scale), new Vector3(11.05f * TennisCourtGeometry.Scale, 0.025f, 0.07f), lineMaterial);
-            CreateLine("Near Service", new Vector3(0f, 0.015f, -TennisCourtGeometry.ServiceLineDepth), new Vector3(8.25f * TennisCourtGeometry.Scale, 0.025f, 0.06f), lineMaterial);
-            CreateLine("Far Service", new Vector3(0f, 0.015f, TennisCourtGeometry.ServiceLineDepth), new Vector3(8.25f * TennisCourtGeometry.Scale, 0.025f, 0.06f), lineMaterial);
+            CreateLine("Near Baseline", new Vector3(0f, 0.015f, -11.85f * TennisCourtGeometry.Scale), new Vector3(TennisCourtGeometry.BaselineVisualWidth, 0.025f, 0.07f), lineMaterial);
+            CreateLine("Far Baseline", new Vector3(0f, 0.015f, 11.85f * TennisCourtGeometry.Scale), new Vector3(TennisCourtGeometry.BaselineVisualWidth, 0.025f, 0.07f), lineMaterial);
+            CreateLine("Near Service", new Vector3(0f, 0.015f, -TennisCourtGeometry.ServiceLineDepth), new Vector3(TennisCourtGeometry.ServiceLineVisualWidth, 0.025f, 0.06f), lineMaterial);
+            CreateLine("Far Service", new Vector3(0f, 0.015f, TennisCourtGeometry.ServiceLineDepth), new Vector3(TennisCourtGeometry.ServiceLineVisualWidth, 0.025f, 0.06f), lineMaterial);
             CreateLine("Service Center", new Vector3(0f, 0.015f, 0f), new Vector3(0.06f, 0.025f, 12.8f * TennisCourtGeometry.Scale), lineMaterial);
 
             GameObject net = GameObject.CreatePrimitive(PrimitiveType.Cube);
             net.name = "Net";
             net.transform.position = new Vector3(0f, 0.48f, 0f);
-            net.transform.localScale = new Vector3(11.35f * TennisCourtGeometry.Scale, 0.92f, 0.09f);
+            net.transform.localScale = new Vector3(TennisCourtGeometry.NetVisualWidth, 0.92f, 0.09f);
             net.GetComponent<Renderer>().sharedMaterial = lineMaterial;
             net.AddComponent<TennisNetSurface>();
             net.AddComponent<TennisNetVisual>().Configure(lineMaterial);

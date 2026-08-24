@@ -13,8 +13,16 @@ namespace PrideCourt.Editor
     {
         public const string LuxModelPath = "Assets/_Project/Art/Models/Generated/Lux_Fox_Model_v1.obj";
         public const string BastionModelPath = "Assets/_Project/Art/Models/Generated/Bastion_Robot_Model_v1.obj";
+        public const string LuciaModelPath = "Assets/_Project/Art/Models/Generated/Lucia_Fairy_Model_v1.obj";
+        public const string CharlotteModelPath = "Assets/_Project/Art/Models/Generated/Charlotte_Dragon_Model_v1.obj";
+        public const string ZephyrModelPath = "Assets/_Project/Art/Models/Generated/Zephyr_Jet_Model_v1.obj";
+        public const string PokoModelPath = "Assets/_Project/Art/Models/Generated/Poko_Tanuki_Model_v1.obj";
         public const string LuxRiggedPrefabPath = "Assets/_Project/Generated/RiggedModels/Lux_Rigged.prefab";
         public const string BastionRiggedPrefabPath = "Assets/_Project/Generated/RiggedModels/Bastion_Rigged.prefab";
+        public const string LuciaRiggedPrefabPath = "Assets/_Project/Generated/RiggedModels/Lucia_Rigged.prefab";
+        public const string CharlotteRiggedPrefabPath = "Assets/_Project/Generated/RiggedModels/Charlotte_Rigged.prefab";
+        public const string ZephyrRiggedPrefabPath = "Assets/_Project/Generated/RiggedModels/Zephyr_Rigged.prefab";
+        public const string PokoRiggedPrefabPath = "Assets/_Project/Generated/RiggedModels/Poko_Rigged.prefab";
         private const string ScenePath = "Assets/_Project/Scenes/MVP_Prototype.unity";
         private static readonly Vector3 ModelLocalPosition = new Vector3(0f, -1f, 0f);
         private static readonly Vector3 ModelLocalScale = new Vector3(0.9f, 0.72f, 0.9f);
@@ -22,10 +30,12 @@ namespace PrideCourt.Editor
         [MenuItem("Pride Court/Integrate Generated Character Models")]
         public static void IntegrateGeneratedModels()
         {
-            ConfigureModelImporter(LuxModelPath);
-            ConfigureModelImporter(BastionModelPath);
-            RequireModel(LuxModelPath);
-            RequireModel(BastionModelPath);
+            foreach (AthleteIdentity identity in AthleteCatalog.All)
+            {
+                string modelPath = GetModelPath(identity);
+                ConfigureModelImporter(modelPath);
+                RequireModel(modelPath);
+            }
             BuildRiggedPrefabs();
 
             var scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
@@ -123,19 +133,23 @@ namespace PrideCourt.Editor
             }
 
             DestroyDirectChild(athleteObject.transform, "Prototype Racket");
-            DestroyDirectChild(athleteObject.transform, "Lux Silhouette");
-            DestroyDirectChild(athleteObject.transform, "Bastion Silhouette");
+            foreach (AthleteIdentity identity in AthleteCatalog.All)
+                DestroyDirectChild(athleteObject.transform, AthleteCatalog.Get(identity).InternalName + " Silhouette");
 
-            if (AssetDatabase.LoadAssetAtPath<GameObject>(LuxRiggedPrefabPath) == null ||
-                AssetDatabase.LoadAssetAtPath<GameObject>(BastionRiggedPrefabPath) == null)
+            bool missingPrefab = false;
+            foreach (AthleteIdentity identity in AthleteCatalog.All)
+                missingPrefab |= AssetDatabase.LoadAssetAtPath<GameObject>(GetRiggedPrefabPath(identity)) == null;
+            if (missingPrefab)
             {
                 BuildRiggedPrefabs();
             }
 
-            GameObject luxVisual = InstantiateModel(LuxRiggedPrefabPath, "Lux Silhouette", athleteObject.transform);
-            GameObject bastionVisual = InstantiateModel(BastionRiggedPrefabPath, "Bastion Silhouette", athleteObject.transform);
-            luxVisual.SetActive(activeIdentity == AthleteIdentity.Lux);
-            bastionVisual.SetActive(activeIdentity == AthleteIdentity.Bastion);
+            foreach (AthleteIdentity identity in AthleteCatalog.All)
+            {
+                string instanceName = AthleteCatalog.Get(identity).InternalName + " Silhouette";
+                GameObject visual = InstantiateModel(GetRiggedPrefabPath(identity), instanceName, athleteObject.transform);
+                visual.SetActive(activeIdentity == identity);
+            }
         }
 
         private static GameObject InstantiateModel(string assetPath, string instanceName, Transform parent)
@@ -162,9 +176,37 @@ namespace PrideCourt.Editor
         private static void BuildRiggedPrefabs()
         {
             EnsureFolder("Assets/_Project/Generated/RiggedModels");
-            BuildRiggedPrefab(LuxModelPath, LuxRiggedPrefabPath, AthleteIdentity.Lux);
-            BuildRiggedPrefab(BastionModelPath, BastionRiggedPrefabPath, AthleteIdentity.Bastion);
+            foreach (AthleteIdentity identity in AthleteCatalog.All)
+                BuildRiggedPrefab(GetModelPath(identity), GetRiggedPrefabPath(identity), identity);
             AssetDatabase.SaveAssets();
+        }
+
+        public static string GetModelPath(AthleteIdentity identity)
+        {
+            return identity switch
+            {
+                AthleteIdentity.Lux => LuxModelPath,
+                AthleteIdentity.Bastion => BastionModelPath,
+                AthleteIdentity.Lucia => LuciaModelPath,
+                AthleteIdentity.Charlotte => CharlotteModelPath,
+                AthleteIdentity.Zephyr => ZephyrModelPath,
+                AthleteIdentity.Poko => PokoModelPath,
+                _ => throw new ArgumentOutOfRangeException(nameof(identity), identity, "Unknown athlete identity.")
+            };
+        }
+
+        public static string GetRiggedPrefabPath(AthleteIdentity identity)
+        {
+            return identity switch
+            {
+                AthleteIdentity.Lux => LuxRiggedPrefabPath,
+                AthleteIdentity.Bastion => BastionRiggedPrefabPath,
+                AthleteIdentity.Lucia => LuciaRiggedPrefabPath,
+                AthleteIdentity.Charlotte => CharlotteRiggedPrefabPath,
+                AthleteIdentity.Zephyr => ZephyrRiggedPrefabPath,
+                AthleteIdentity.Poko => PokoRiggedPrefabPath,
+                _ => throw new ArgumentOutOfRangeException(nameof(identity), identity, "Unknown athlete identity.")
+            };
         }
 
         private static void BuildRiggedPrefab(string modelPath, string prefabPath, AthleteIdentity identity)
@@ -186,7 +228,7 @@ namespace PrideCourt.Editor
                 {
                     throw new InvalidOperationException("PRIDE_COURT_RIG_BUILD_FAILED: Model has no renderers: " + modelPath);
                 }
-                working.name = identity == AthleteIdentity.Lux ? "Lux Rigged Model" : "Bastion Rigged Model";
+                working.name = AthleteCatalog.Get(identity).InternalName + " Rigged Model";
                 foreach (Collider collider in working.GetComponentsInChildren<Collider>(true))
                 {
                     UnityEngine.Object.DestroyImmediate(collider);

@@ -5414,6 +5414,9 @@ MonoBehaviour:
   tailBase: {fileID: 3352612314576913952}
   tailMiddle: {fileID: 8187609091570661124}
   tailTip: {fileID: 4021282850660470104}
+  leftWing: {fileID: 0}
+  rightWing: {fileID: 0}
+  headLeaf: {fileID: 0}
   racketGrip: {fileID: 6383130840548102389}
   racketHandle: {fileID: 6526312416150865978}
   racketHand: {fileID: 4712476717587792338}

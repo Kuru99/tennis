@@ -25,6 +25,7 @@ namespace PrideCourt.Editor
         private const string BallPointEndYKey = "PrideCourt.PlayModeSmoke.BallPointEndY";
         private const string HandCountKey = "PrideCourt.PlayModeSmoke.HandCount";
         private const string SkipPresentationValidationKey = "PrideCourt.PlayModeSmoke.SkipPresentationValidation";
+        private const string SkipOpeningTimingValidationKey = "PrideCourt.PlayModeSmoke.SkipOpeningTimingValidation";
 
         private static bool specialCallbackFired;
 
@@ -56,6 +57,12 @@ namespace PrideCourt.Editor
             RunFromCommandLine();
         }
 
+        public static void RunBackhandFromCommandLine()
+        {
+            SessionState.SetBool(SkipOpeningTimingValidationKey, true);
+            RunFromCommandLine();
+        }
+
         private static void Tick()
         {
             if (!SessionState.GetBool(RunningKey, false))
@@ -78,6 +85,7 @@ namespace PrideCourt.Editor
                         MvpFrontEndController openingFrontEnd = UnityEngine.Object.FindAnyObjectByType<MvpFrontEndController>();
                         Require(openingFrontEnd != null && openingFrontEnd.CurrentScreen == FrontEndScreen.Opening,
                             "The opening movie was not the first front-end screen.");
+                        openingFrontEnd.SetOpeningElapsedForValidation(0.18f);
                         CaptureUiFrame("UI_Opening.png");
                         return;
                     }
@@ -92,7 +100,41 @@ namespace PrideCourt.Editor
                     double elapsed = EditorApplication.timeSinceStartup - startedAt;
                     MvpFrontEndController frontEnd = UnityEngine.Object.FindAnyObjectByType<MvpFrontEndController>();
                     Require(frontEnd != null, "The front-end controller was not alive in Play Mode.");
-                    if (stage == -1 && elapsed >= 0.2d)
+                    if (stage == -1 &&
+                        SessionState.GetBool(SkipOpeningTimingValidationKey, false) &&
+                        elapsed >= 0.2d)
+                    {
+                        Require(frontEnd.ApplyFrontEndAction(FrontEndAction.FinishOpening) &&
+                                frontEnd.CurrentScreen == FrontEndScreen.Title,
+                            "The opening movie did not transition to the title screen.");
+                        SessionState.SetInt(StageKey, -10);
+                        SessionState.SetFloat(StartedAtKey, (float)EditorApplication.timeSinceStartup);
+                        return;
+                    }
+
+                    if (stage == -1 && elapsed >= 0.35d)
+                    {
+                        Require(frontEnd.CurrentScreen == FrontEndScreen.Opening,
+                            "The opening movie ended before the versus composition could be shown.");
+                        frontEnd.SetOpeningElapsedForValidation(3.35f);
+                        CaptureUiFrame("UI_Opening_Versus.png");
+                        SessionState.SetInt(StageKey, -30);
+                        SessionState.SetFloat(StartedAtKey, (float)EditorApplication.timeSinceStartup);
+                        return;
+                    }
+
+                    if (stage == -30 && elapsed >= 0.35d)
+                    {
+                        Require(frontEnd.CurrentScreen == FrontEndScreen.Opening,
+                            "The opening movie ended before the logo landing could be shown.");
+                        frontEnd.SetOpeningElapsedForValidation(5.62f);
+                        CaptureUiFrame("UI_Opening_Logo.png");
+                        SessionState.SetInt(StageKey, -31);
+                        SessionState.SetFloat(StartedAtKey, (float)EditorApplication.timeSinceStartup);
+                        return;
+                    }
+
+                    if (stage == -31 && elapsed >= 0.35d)
                     {
                         Require(frontEnd.ApplyFrontEndAction(FrontEndAction.FinishOpening) &&
                                 frontEnd.CurrentScreen == FrontEndScreen.Title,
@@ -128,9 +170,37 @@ namespace PrideCourt.Editor
                     if (stage == -12 && elapsed >= 0.2d)
                     {
                         Require(frontEnd.ApplyFrontEndAction(FrontEndAction.SelectLocal) &&
-                                frontEnd.CurrentScreen == FrontEndScreen.LocalNetworkLobby &&
+                                frontEnd.CurrentScreen == FrontEndScreen.Setup &&
+                                frontEnd.CurrentSetupStep == SetupStep.CharacterSelect &&
                                 frontEnd.PendingMultiplayerEntry == MultiplayerEntry.Local,
-                            "Local battle did not reach the LAN host/join lobby.");
+                            "Local battle did not reach its character selection stage.");
+                        CaptureUiFrame("UI_CharacterSelect_Local.png");
+                        SessionState.SetInt(StageKey, -121);
+                        SessionState.SetFloat(StartedAtKey, (float)EditorApplication.timeSinceStartup);
+                        return;
+                    }
+
+                    if (stage == -121 && elapsed >= 0.2d)
+                    {
+                        Require(frontEnd.ApplySetupAction(SetupAction.ConfirmCharacter) &&
+                                frontEnd.CurrentSetupStep == SetupStep.CardLoadout,
+                            "Local character confirmation did not reach card loadout selection.");
+                        CaptureUiFrame("UI_CardLoadout_Local.png");
+                        SessionState.SetInt(StageKey, -122);
+                        SessionState.SetFloat(StartedAtKey, (float)EditorApplication.timeSinceStartup);
+                        return;
+                    }
+
+                    if (stage == -122 && elapsed >= 0.2d)
+                    {
+                        Require(frontEnd.ApplyFrontEndAction(FrontEndAction.ReturnToLocalLobby) &&
+                                frontEnd.CurrentScreen == FrontEndScreen.LocalNetworkLobby,
+                            "Completing local loadout selection did not reach the LAN host/join lobby.");
+                        Require(frontEnd.TrySelectLocalGamesToWin(1) &&
+                                frontEnd.TrySelectLocalGamesToWin(2) &&
+                                frontEnd.TrySelectLocalGamesToWin(3) &&
+                                frontEnd.SelectedLocalGamesToWin == 3,
+                            "Local battle did not expose all one-, two-, and three-game win options.");
                         CaptureUiFrame("UI_LocalNetworkLobby.png");
                         SessionState.SetInt(StageKey, -13);
                         SessionState.SetFloat(StartedAtKey, (float)EditorApplication.timeSinceStartup);
@@ -154,9 +224,21 @@ namespace PrideCourt.Editor
                     {
                         Require(frontEnd.ApplyFrontEndAction(FrontEndAction.Back) &&
                                 frontEnd.ApplyFrontEndAction(FrontEndAction.SelectSolo) &&
-                                frontEnd.CurrentScreen == FrontEndScreen.Setup,
-                            "Solo play did not reach character and deck setup.");
-                        CaptureUiFrame("UI_Setup.png");
+                                frontEnd.CurrentScreen == FrontEndScreen.Setup &&
+                                frontEnd.CurrentSetupStep == SetupStep.CharacterSelect,
+                            "Solo play did not reach character selection.");
+                        CaptureUiFrame("UI_CharacterSelect.png");
+                        SessionState.SetInt(StageKey, -141);
+                        SessionState.SetFloat(StartedAtKey, (float)EditorApplication.timeSinceStartup);
+                        return;
+                    }
+
+                    if (stage == -141 && elapsed >= 0.2d)
+                    {
+                        Require(frontEnd.ApplySetupAction(SetupAction.ConfirmCharacter) &&
+                                frontEnd.CurrentSetupStep == SetupStep.CardLoadout,
+                            "Solo character confirmation did not reach card loadout selection.");
+                        CaptureUiFrame("UI_CardLoadout.png");
                         Debug.Log("PRIDE_COURT_FRONT_END_FLOW_PASSED");
                         SessionState.SetInt(StageKey, -15);
                         SessionState.SetFloat(StartedAtKey, (float)EditorApplication.timeSinceStartup);
@@ -165,7 +247,29 @@ namespace PrideCourt.Editor
 
                     if (stage == -15 && elapsed >= 0.2d)
                     {
-                        match.StartNewMatch();
+                        TennisAthleteController near = FindAthlete(athletes, CourtSide.Near);
+                        TennisAthleteController far = FindAthlete(athletes, CourtSide.Far);
+                        match.StartNewMatch(3);
+                        for (int point = 0; point < MatchScore.MinimumWinningPoints - 1; point++)
+                            match.Score.AwardPoint(CourtSide.Near);
+                        near.SpecialGauge.Add(SpecialGaugeState.ActivationThreshold);
+                        Require(near.SpecialGauge.IsReady,
+                            "A full 50-point special gauge must be ready for activation.");
+                        near.SpecialGauge.Add(SpecialGaugeState.Maximum);
+                        far.SpecialGauge.Add(SpecialGaugeState.Maximum);
+                        match.AwardPoint(CourtSide.Near, "GAME_GAUGE_RESET_SMOKE");
+                        Require(match.Score.NearGames == 1 && !match.Score.IsMatchOver &&
+                                Mathf.Approximately(near.SpecialGauge.Current, 0f) &&
+                                Mathf.Approximately(far.SpecialGauge.Current, 0f),
+                            "Completing a non-final game did not reset both special gauges.");
+
+                        near.SpecialGauge.Add(SpecialGaugeState.Maximum);
+                        far.SpecialGauge.Add(SpecialGaugeState.Maximum);
+                        match.StartNewMatch(MatchScore.DefaultGamesToWin);
+                        Require(match.Score.GamesToWin == MatchScore.DefaultGamesToWin &&
+                                Mathf.Approximately(near.SpecialGauge.Current, 0f) &&
+                                Mathf.Approximately(far.SpecialGauge.Current, 0f),
+                            "Solo match startup did not restore the two-game default and empty special gauges.");
                         SessionState.SetInt(StageKey, -2);
                         SessionState.SetFloat(StartedAtKey, (float)EditorApplication.timeSinceStartup);
                         return;
@@ -173,6 +277,8 @@ namespace PrideCourt.Editor
 
                     if (stage == -2 && match.Phase == MatchPhase.Serving)
                     {
+                        Require(Mathf.Approximately(StaminaState.Maximum, 80f),
+                            "Runtime stamina maximum did not use the approved 80-percent value.");
                         CaptureUiFrame("UI_GameplayHud.png");
                         HudSettingsController settings = UnityEngine.Object.FindAnyObjectByType<HudSettingsController>();
                         Require(settings != null, "The settings/pause controller was not alive in Play Mode.");
@@ -225,6 +331,10 @@ namespace PrideCourt.Editor
                     if (stage == 0 && elapsed >= 0.5d)
                     {
                         TennisAthleteController player = FindAthlete(athletes, CourtSide.Near);
+                        TennisAthleteController bastion = Array.Find(athletes,
+                            athlete => athlete.Identity == AthleteIdentity.Bastion);
+                        Require(bastion != null && Mathf.Approximately(bastion.HitRadius, 2.35f),
+                            "The runtime Bastion hit radius did not use the approved 2.35m value.");
                         if (!SessionState.GetBool(SkipPresentationValidationKey, false))
                         {
                             foreach (TennisAthleteController athlete in athletes)
@@ -318,7 +428,7 @@ namespace PrideCourt.Editor
                         TennisAthleteController player = FindAthlete(athletes, CourtSide.Near);
                         SessionState.SetFloat(PositionKey, player.transform.position.x);
                         player.GetComponent<KeyboardMouseCommandSource>().InjectCommandForValidation(
-                            new TennisCommand(Vector2.left, true, false, false, false, false));
+                            new TennisCommand(Vector2.right, true, false, false, false, false));
                         SessionState.SetInt(StageKey, 121);
                         SessionState.SetFloat(StartedAtKey, (float)EditorApplication.timeSinceStartup);
                         return;
@@ -332,6 +442,11 @@ namespace PrideCourt.Editor
                             "The server could not move after striking the serve.");
                         Require(player.IsDashingMotion && player.Stamina.Current < StaminaState.Maximum,
                             "Dash did not unlock after striking the serve.");
+                        // Force a left-to-right crossing after contact. The service
+                        // box must still use the side captured at strike time.
+                        Vector3 movedServerPosition = player.transform.position;
+                        movedServerPosition.x = Mathf.Abs(movedServerPosition.x) + 1.25f;
+                        player.transform.position = movedServerPosition;
                         player.GetComponent<KeyboardMouseCommandSource>()
                             .InjectCommandForValidation(new TennisCommand(Vector2.zero, false, true, false, false, false));
                         SessionState.SetInt(StageKey, 122);
@@ -406,24 +521,29 @@ namespace PrideCourt.Editor
 
                         Require(PrideCourtAudio.Instance != null && PrideCourtAudio.Instance.BouncePlayCount > 0,
                             "The returned serve did not play court-bounce audio.");
-                        CompleteFirstPointSmoke(match, ball);
-                        SessionState.SetInt(StageKey, 1);
+                        TennisAthleteController player = FindAthlete(athletes, CourtSide.Near);
+                        Vector3 preparationPosition = ball.transform.position;
+                        preparationPosition.x += player.HitRadius * 0.35f;
+                        preparationPosition.y = player.transform.position.y;
+                        preparationPosition.z -= player.HitRadius * 1.35f;
+                        player.transform.position = preparationPosition;
+                        player.GetComponent<KeyboardMouseCommandSource>().InjectCommandForValidation(
+                            new TennisCommand(Vector2.zero, false, false, true, false, false));
+                        SessionState.SetInt(StageKey, 124);
                         SessionState.SetFloat(StartedAtKey, (float)EditorApplication.timeSinceStartup);
                         return;
                     }
 
-                    if (stage == 124)
+                    if (stage == 124 && elapsed >= 0.1d)
                     {
                         TennisAthleteController player = FindAthlete(athletes, CourtSide.Near);
-                        if (!ball.CanBeHitBy(CourtSide.Near) ||
-                            Vector3.Distance(player.transform.position, ball.transform.position) > player.HitRadius * 0.82f)
-                        {
-                            Require(elapsed < 4d, "The planned backhand feed did not enter the player's hitting radius.");
-                            return;
-                        }
-
-                        player.GetComponent<KeyboardMouseCommandSource>().InjectCommandForValidation(
-                            new TennisCommand(Vector2.zero, false, false, true, false, false));
+                        GeneratedCharacterRig rig = player.GetComponentInChildren<GeneratedCharacterRig>();
+                        Require(rig != null && rig.IsPreparingStroke &&
+                                rig.PreparedStrokeMotion == StrokeMotion.Backhand,
+                            "Buffered left-side input did not enter the visible backhand preparation pose.");
+                        PrepareRigPreviewCamera(player);
+                        CaptureRigFrame("Rig_BackhandPreparation.png");
+                        player.GetComponent<KeyboardMouseCommandSource>().InjectCommandForValidation(default);
                         SessionState.SetInt(StageKey, 125);
                         SessionState.SetFloat(StartedAtKey, (float)EditorApplication.timeSinceStartup);
                         return;
@@ -431,18 +551,20 @@ namespace PrideCourt.Editor
 
                     if (stage == 125)
                     {
-                        if (elapsed < 0.06d)
+                        TennisAthleteController player = FindAthlete(athletes, CourtSide.Near);
+                        GeneratedCharacterRig rig = player.GetComponentInChildren<GeneratedCharacterRig>();
+                        if (rig == null || !rig.IsStrokePlaying)
                         {
+                            Require(elapsed < 0.55d,
+                                "The prepared backhand did not reach the ball through the buffered input path.");
                             return;
                         }
-                        FindAthlete(athletes, CourtSide.Near).GetComponent<KeyboardMouseCommandSource>()
-                            .InjectCommandForValidation(default);
                         SessionState.SetInt(StageKey, 126);
                         SessionState.SetFloat(StartedAtKey, (float)EditorApplication.timeSinceStartup);
                         return;
                     }
 
-                    if (stage == 126 && elapsed >= 0.18d)
+                    if (stage == 126 && elapsed >= 0.14d)
                     {
                         TennisAthleteController player = FindAthlete(athletes, CourtSide.Near);
                         GeneratedCharacterRig rig = player.GetComponentInChildren<GeneratedCharacterRig>();
@@ -450,6 +572,8 @@ namespace PrideCourt.Editor
                             "A left-side rally ball did not select the backhand motion through player input.");
                         Require(rig.IsStrokePlaying,
                             "The backhand motion ended before the buffered rally return reached the ball.");
+                        Require(rig.RacketVisualTravelDistance >= 0.28f,
+                            "The visible racket did not travel far enough across the body during the backhand.");
                         CaptureRigFrame("Rig_BackhandSwing.png");
                         SessionState.SetInt(StageKey, 127);
                         SessionState.SetFloat(StartedAtKey, (float)EditorApplication.timeSinceStartup);
@@ -611,7 +735,9 @@ namespace PrideCourt.Editor
                         Require(Mathf.Approximately(Time.timeScale, 1f), "Special cut-in did not restore time scale.");
                         Debug.Log(SessionState.GetBool(SkipPresentationValidationKey, false)
                             ? "PRIDE_COURT_FEEDBACK_PLAY_MODE_SMOKE_PASSED"
-                            : "PRIDE_COURT_PLAY_MODE_SMOKE_PASSED");
+                            : SessionState.GetBool(SkipOpeningTimingValidationKey, false)
+                                ? "PRIDE_COURT_BACKHAND_PLAY_MODE_SMOKE_PASSED"
+                                : "PRIDE_COURT_PLAY_MODE_SMOKE_PASSED");
                         SessionState.SetBool(VerifiedKey, true);
                         EditorApplication.ExitPlaymode();
                         return;
@@ -625,6 +751,7 @@ namespace PrideCourt.Editor
                     SessionState.EraseFloat(StartedAtKey);
                     SessionState.EraseInt(StageKey);
                     SessionState.EraseBool(SkipPresentationValidationKey);
+                    SessionState.EraseBool(SkipOpeningTimingValidationKey);
                     EditorApplication.update -= Tick;
                     EditorApplication.Exit(0);
                 }
@@ -637,6 +764,7 @@ namespace PrideCourt.Editor
                 SessionState.EraseFloat(StartedAtKey);
                 SessionState.EraseInt(StageKey);
                 SessionState.EraseBool(SkipPresentationValidationKey);
+                SessionState.EraseBool(SkipOpeningTimingValidationKey);
                 EditorApplication.update -= Tick;
                 if (EditorApplication.isPlaying)
                 {
@@ -659,6 +787,8 @@ namespace PrideCourt.Editor
         {
             match.AwardPoint(CourtSide.Near, "PLAY_MODE_SMOKE");
             Require(match.Score.NearPoints == 1, "Runtime point award did not update the score.");
+            Require(match.Score.NearGames == 0 && match.Score.FarGames == 0 && !match.Score.IsMatchOver,
+                "A single runtime point incorrectly completed a game or the two-game match.");
             Require(match.Phase == MatchPhase.PointResult, "Runtime point award did not enter PointResult.");
             Rigidbody ballBody = ball.GetComponent<Rigidbody>();
             Require(ballBody != null && ballBody.isKinematic,

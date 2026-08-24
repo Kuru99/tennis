@@ -9,7 +9,7 @@ namespace PrideCourt.Editor
 {
     public static class TennisBuildPipeline
     {
-        private const string PublicVersion = "0.1.0-alpha";
+        private const string PublicVersion = "0.1.0-beta";
 
         public static void BuildWindowsFromCommandLine()
         {

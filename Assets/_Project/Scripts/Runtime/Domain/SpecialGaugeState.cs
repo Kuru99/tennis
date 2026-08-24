@@ -5,10 +5,11 @@ namespace PrideCourt.Domain
     [Serializable]
     public sealed class SpecialGaugeState
     {
-        public const float Maximum = 100f;
+        public const float Maximum = 50f;
+        public const float ActivationThreshold = Maximum;
 
         public float Current { get; private set; }
-        public bool IsReady => Current >= Maximum;
+        public bool IsReady => Current >= ActivationThreshold;
         public float Normalized => Current / Maximum;
 
         public void Add(float amount)

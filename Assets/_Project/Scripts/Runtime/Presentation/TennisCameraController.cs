@@ -1,3 +1,4 @@
+using PrideCourt.Gameplay;
 using UnityEngine;
 
 namespace PrideCourt.Presentation
@@ -27,7 +28,9 @@ namespace PrideCourt.Presentation
 
         private void LateUpdate()
         {
-            float targetX = ball == null ? 0f : Mathf.Clamp(ball.position.x * horizontalFollow, -1.15f, 1.15f);
+            float maximumHorizontalOffset = 1.15f * TennisCourtGeometry.CourtWidthMultiplier;
+            float targetX = ball == null ? 0f : Mathf.Clamp(ball.position.x * horizontalFollow,
+                -maximumHorizontalOffset, maximumHorizontalOffset);
             float perspective = localSide == PrideCourt.Domain.CourtSide.Near ? 1f : -1f;
             Vector3 targetPosition = new Vector3(DefaultBasePosition.x + targetX * perspective,
                 DefaultBasePosition.y, DefaultBasePosition.z * perspective);

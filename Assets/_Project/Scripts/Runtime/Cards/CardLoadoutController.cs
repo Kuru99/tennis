@@ -16,6 +16,13 @@ namespace PrideCourt.Cards
         private const float HandCardGap = 8f;
         private const float HandRightMargin = 20f;
         private const float HandTopMargin = 18f;
+        private const float PreparationPanelWidthRatio = 0.58f;
+        private const float PreparationPanelMaxWidth = 560f;
+        private const float PreparationPanelHeight = 136f;
+        private const float PreparationPanelTopRatio = 0.38f;
+        private const float PreparationButtonHeight = 54f;
+        private const float PreparationDiscardHeight = 48f;
+        private const float PreparationControlGap = 10f;
         // Android touch targets need a little more breathing room than the PC HUD.
         // Keep the multiplier local to the card presentation so the shared HUD scale
         // preference and the PC layout remain unchanged.
@@ -29,6 +36,7 @@ namespace PrideCourt.Cards
         private DeckState rewardDeck;
         private CardId? pendingNormal;
         private CardId? pendingReward;
+        private CardId? specialEncoreCard;
         private float cardHeldSince;
         private bool selectionOpened;
         private float nextCpuCardDecision;
@@ -92,6 +100,7 @@ namespace PrideCourt.Cards
             UsedCardThisPoint = state.UsedThisPoint;
             pendingNormal = state.HasPending ? state.Pending : null;
             pendingReward = null;
+            specialEncoreCard = null;
             selectionOpened = false;
         }
 
@@ -121,6 +130,7 @@ namespace PrideCourt.Cards
             Hand.Clear();
             pendingNormal = null;
             pendingReward = null;
+            specialEncoreCard = null;
             DrawInitialHand();
         }
 
@@ -237,6 +247,7 @@ namespace PrideCourt.Cards
             UsedCardThisPoint = true;
             CardDefinition definition = CardCatalog.Get(card);
             Apply(card);
+            FlushSpecialEncore();
             CardActivationEffect.Play(card, athlete);
             PrideCourtAudio.Instance?.PlayCard(definition.Category, definition.IsCharacterCard);
             match.NotifyCardUsed(athlete.Side, definition.DisplayName);
@@ -278,7 +289,62 @@ namespace PrideCourt.Cards
                 case CardId.AnchorCore:
                     athlete.ApplyPersonalBuff(1f, 1f, 0.5f, 6f);
                     break;
+                case CardId.LeafVeil:
+                    match.ApplyVisualDisruption(athlete.Side, 1.6f);
+                    athlete.PrepareLuciaFinisher(3.2f);
+                    break;
+                case CardId.MischiefCurve:
+                    athlete.QueueTrickShot(1f);
+                    athlete.PrepareLuciaFinisher(3.2f);
+                    break;
+                case CardId.TimeTease:
+                    match.ApplyTimeDisruption(athlete.Side, 0.95f);
+                    athlete.PrepareLuciaFinisher(3.2f);
+                    break;
+                case CardId.DragonGrace:
+                    athlete.ApplyShotBuff(1.1f, 0.72f, 6f);
+                    break;
+                case CardId.NobleRetake:
+                    athlete.GrantMistakeGuard(1);
+                    break;
+                case CardId.DragonAwakening:
+                    athlete.ArmDragonAwakening();
+                    break;
+                case CardId.JetIgnition:
+                    // Zephyr gets overwhelming burst speed, but the hotter engines consume
+                    // more stamina. This keeps acceleration a commitment instead of a free win.
+                    athlete.ApplyMobilityBuff(1.3f, 1.2f, 1.2f, 4f);
+                    break;
+                case CardId.VectorWing:
+                    athlete.QueueDiveAssist(0.6f, 0.48f);
+                    break;
+                case CardId.AirBrake:
+                    athlete.ApplyMobilityBuff(1.05f, 0.75f, 1.55f, 5f);
+                    break;
+                case CardId.LeafMasquerade:
+                    match.ApplyVisualDisruption(athlete.Side, 1.35f);
+                    break;
+                case CardId.BorrowedForm:
+                    athlete.QueueShotDecoy();
+                    break;
+                case CardId.FalseTell:
+                    athlete.QueueFalseTell();
+                    break;
             }
+        }
+
+        public void GrantSpecialEncore()
+        {
+            if (athlete == null || athlete.Identity != AthleteIdentity.Lucia || rewardDeck == null) return;
+            CardId encore = rewardDeck.Draw();
+            if (!Hand.TryAdd(encore, true)) specialEncoreCard = encore;
+        }
+
+        private void FlushSpecialEncore()
+        {
+            if (!specialEncoreCard.HasValue || Hand.Count >= CardHandState.Capacity) return;
+            Hand.TryAdd(specialEncoreCard.Value, true);
+            specialEncoreCard = null;
         }
 
         private void Update()
@@ -373,28 +439,65 @@ namespace PrideCourt.Cards
 
             if (match.Phase == MatchPhase.CardSelection && PendingCard.HasValue)
             {
-                string pending = CardCatalog.Get(PendingCard.Value).DisplayName;
-                Rect drawPanel = new Rect(Screen.safeArea.x + Screen.safeArea.width * 0.3f,
-                    Screen.safeArea.y + Screen.safeArea.height * 0.38f, Screen.safeArea.width * 0.4f, 92f * scale);
-                PrideCourtUiTheme.DrawPanel(drawPanel, PrideCourtUiTheme.Tone.Magenta, scale, "新しいカード / 選択");
-                GUI.Label(new Rect(drawPanel.x + 16f * scale, drawPanel.y + 27f * scale, drawPanel.width - 32f * scale, 58f * scale),
-                    pending + "\n[1][2][3] 入れ替え  /  [ENTER] 捨てる",
-                    PrideCourtUiTheme.Label(scale, 14, TextAnchor.MiddleCenter, PrideCourtUiTheme.Paper, true));
-                float buttonWidth = Mathf.Min(150f, Screen.width * 0.2f);
-                float startX = Screen.width * 0.5f - (buttonWidth * 1.5f + 10f);
-                for (int i = 0; i < Hand.Count; i++)
+                DrawPreparationOverlay(Screen.safeArea, scale);
+            }
+        }
+
+        private void DrawPreparationOverlay(Rect safe, float scale)
+        {
+            string pending = CardCatalog.Get(PendingCard.Value).DisplayName;
+            float panelWidth = Mathf.Min(safe.width * PreparationPanelWidthRatio,
+                PreparationPanelMaxWidth * scale);
+            float panelHeight = Mathf.Min(PreparationPanelHeight * scale, safe.height * 0.28f);
+            float buttonHeight = Mathf.Min(Mathf.Max(PreparationButtonHeight * scale, 40f), safe.height * 0.12f);
+            float discardHeight = Mathf.Min(Mathf.Max(PreparationDiscardHeight * scale, 38f), safe.height * 0.1f);
+            float gap = PreparationControlGap * scale;
+            float totalHeight = panelHeight + gap + buttonHeight + gap + discardHeight;
+            float minimumPanelY = GetHandBounds(scale).yMax + 8f * scale;
+            float preferredPanelY = safe.y + safe.height * PreparationPanelTopRatio;
+            float maximumPanelY = safe.y + Mathf.Max(8f, safe.height - totalHeight - 8f);
+            float panelY = Mathf.Clamp(preferredPanelY, minimumPanelY, maximumPanelY);
+            Rect drawPanel = new Rect(safe.center.x - panelWidth * 0.5f, panelY, panelWidth, panelHeight);
+
+            PrideCourtUiTheme.DrawPanel(drawPanel, PrideCourtUiTheme.Tone.Magenta, scale, "新しいカード / 選択");
+
+            float contentInset = 16f * scale;
+            float contentWidth = drawPanel.width - contentInset * 2f;
+            float nameY = drawPanel.y + 35f * scale;
+            GUI.Label(new Rect(drawPanel.x + contentInset, nameY, contentWidth, 26f * scale), pending,
+                PrideCourtUiTheme.Label(scale, 14, TextAnchor.MiddleCenter, PrideCourtUiTheme.Paper, true));
+            GUI.Label(new Rect(drawPanel.x + contentInset, drawPanel.y + 65f * scale,
+                    contentWidth, Mathf.Max(20f, drawPanel.yMax - (drawPanel.y + 65f * scale) - 8f * scale)),
+                "[1][2][3] 入れ替え  /  [ENTER] 捨てる",
+                PrideCourtUiTheme.Label(scale, 12, TextAnchor.MiddleCenter, PrideCourtUiTheme.Muted, true));
+
+            float buttonGap = 8f * scale;
+            float buttonRowWidth = Mathf.Max(0f, drawPanel.width - contentInset * 2f);
+            float buttonWidth = (buttonRowWidth - buttonGap * 2f) / 3f;
+            float buttonY = drawPanel.yMax + gap;
+            float buttonStartX = drawPanel.center.x - buttonRowWidth * 0.5f;
+            for (int i = 0; i < Hand.Count; i++)
+            {
+                Rect buttonRect = new Rect(buttonStartX + i * (buttonWidth + buttonGap), buttonY,
+                    buttonWidth, buttonHeight);
+                bool compactButton = buttonWidth < 128f * scale;
+                string buttonLabel = compactButton
+                    ? "枠" + (i + 1) + "\n入替"
+                    : "枠" + (i + 1) + "と入れ替え";
+                if (GUI.Button(buttonRect, buttonLabel,
+                    PrideCourtUiTheme.Button(PrideCourtUiTheme.Tone.Cyan, scale, compactButton ? 12 : 14)))
                 {
-                    if (GUI.Button(new Rect(startX + i * (buttonWidth + 10f), Screen.height * 0.52f, buttonWidth, 54f),
-                        "枠" + (i + 1) + "と入れ替え", PrideCourtUiTheme.Button(PrideCourtUiTheme.Tone.Cyan, scale, 14)))
-                    {
-                        LocalPreparationInputRouter.Queue(i);
-                    }
+                    LocalPreparationInputRouter.Queue(i);
                 }
-                if (GUI.Button(new Rect(Screen.width * 0.5f - 80f, Screen.height * 0.61f, 160f, 48f), "捨てる",
-                        PrideCourtUiTheme.Button(PrideCourtUiTheme.Tone.Neutral, scale, 16)))
-                {
-                    LocalPreparationInputRouter.Queue(-1);
-                }
+            }
+
+            float discardWidth = Mathf.Min(160f * scale, buttonRowWidth);
+            Rect discardRect = new Rect(drawPanel.center.x - discardWidth * 0.5f,
+                buttonY + buttonHeight + gap, discardWidth, discardHeight);
+            if (GUI.Button(discardRect, "捨てる",
+                    PrideCourtUiTheme.Button(PrideCourtUiTheme.Tone.Neutral, scale, 16)))
+            {
+                LocalPreparationInputRouter.Queue(-1);
             }
         }
 

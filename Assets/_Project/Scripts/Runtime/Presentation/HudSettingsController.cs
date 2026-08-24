@@ -27,7 +27,9 @@ namespace PrideCourt.Gameplay
         private void Update()
         {
             ResolveReferences();
-            if (UnityEngine.Input.GetKeyDown(KeyCode.F10)) TryToggle();
+            bool inGameMenuPressed = match != null && match.HasStarted &&
+                                     UnityEngine.Input.GetKeyDown(KeyCode.Escape);
+            if (inGameMenuPressed || UnityEngine.Input.GetKeyDown(KeyCode.F10)) TryToggle();
             if (!open && UnityEngine.Input.GetKeyDown(KeyCode.F8) && !IsMultiplayer())
                 CpuDifficultyPreferences.Cycle();
         }

@@ -27,6 +27,20 @@ namespace PrideCourt.Presentation
         public static readonly Color Violet = new Color(0.61f, 0.29f, 0.98f, 1f);
         public static readonly Color Yellow = new Color(1f, 0.75f, 0.08f, 1f);
 
+        public static string FormatGameStars(int games, int gamesToWin)
+        {
+            int slotCount = Mathf.Max(1, gamesToWin);
+            int filledCount = Mathf.Clamp(games, 0, slotCount);
+            string stars = string.Empty;
+            for (int i = 0; i < slotCount; i++)
+            {
+                if (i > 0) stars += " ";
+                stars += i < filledCount ? "★" : "☆";
+            }
+
+            return stars;
+        }
+
         private const int TextureSize = 64;
         private const int Cut = 10;
         private static readonly Dictionary<int, Texture2D> textures = new Dictionary<int, Texture2D>();

@@ -20,6 +20,7 @@ namespace PrideCourt.Presentation
         SelectMultiplayer,
         SelectLocal,
         SelectNetwork,
+        EditSetup,
         Back,
         ReturnToSetup,
         ReturnToLocalLobby,
@@ -70,13 +71,18 @@ namespace PrideCourt.Presentation
 
                 case FrontEndAction.SelectLocal when Screen == FrontEndScreen.MultiplayerSelect:
                     PendingMultiplayerEntry = MultiplayerEntry.Local;
-                    Screen = FrontEndScreen.LocalNetworkLobby;
+                    Screen = FrontEndScreen.Setup;
                     return true;
 
                 case FrontEndAction.SelectNetwork when Screen == FrontEndScreen.MultiplayerSelect &&
                                                            NetworkBattleAvailable:
                     PendingMultiplayerEntry = MultiplayerEntry.Network;
-                    Screen = FrontEndScreen.OnlineNetworkLobby;
+                    Screen = FrontEndScreen.Setup;
+                    return true;
+
+                case FrontEndAction.EditSetup when Screen == FrontEndScreen.LocalNetworkLobby ||
+                                                   Screen == FrontEndScreen.OnlineNetworkLobby:
+                    Screen = FrontEndScreen.Setup;
                     return true;
 
                 case FrontEndAction.ReturnToSetup:
@@ -117,8 +123,18 @@ namespace PrideCourt.Presentation
                     Screen = FrontEndScreen.MultiplayerSelect;
                     return true;
                 case FrontEndScreen.MultiplayerSelect:
-                case FrontEndScreen.Setup:
                     Screen = FrontEndScreen.ModeSelect;
+                    return true;
+                case FrontEndScreen.Setup:
+                    if (PendingMultiplayerEntry != MultiplayerEntry.None)
+                    {
+                        PendingMultiplayerEntry = MultiplayerEntry.None;
+                        Screen = FrontEndScreen.MultiplayerSelect;
+                    }
+                    else
+                    {
+                        Screen = FrontEndScreen.ModeSelect;
+                    }
                     return true;
                 case FrontEndScreen.ModeSelect:
                     Screen = FrontEndScreen.Title;

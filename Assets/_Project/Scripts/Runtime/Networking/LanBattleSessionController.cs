@@ -57,6 +57,7 @@ namespace PrideCourt.Networking
         private uint lastAppliedSequence;
         private bool localSettingsOpen;
         private bool remoteSettingsOpen;
+        private int hostedGamesToWin = MatchScore.DefaultGamesToWin;
 
         public LanSessionRole Role { get; private set; } = LanSessionRole.Offline;
         public string Status { get; private set; } = "未接続";
@@ -146,11 +147,14 @@ namespace PrideCourt.Networking
             Status = "同じLANのコートを検索中…";
         }
 
-        public bool StartHosting(AthleteIdentity identity, IReadOnlyList<CardId> deck)
+        public bool StartHosting(AthleteIdentity identity, IReadOnlyList<CardId> deck, int gamesToWin)
         {
             if (!ValidateDeck(deck)) return Fail("16枚のデッキを用意してください。");
+            if (!MatchScore.IsSupportedGamesToWin(gamesToWin))
+                return Fail("ゲーム先取数は1から3の間で選んでください。");
             StopTransport();
             PrepareAuthoritativeWorld();
+            hostedGamesToWin = gamesToWin;
             localIdentity = identity;
             localDeck = deck.ToArray();
             nearAthlete.SetIdentity(identity);
@@ -163,9 +167,9 @@ namespace PrideCourt.Networking
                 listener = new TcpListener(IPAddress.Any, LanBattleProtocol.GamePort);
                 listener.Start(1);
                 acceptTask = listener.AcceptTcpClientAsync();
-                discovery.StartHost(SystemInfo.deviceName + " COURT");
+                discovery.StartHost(SystemInfo.deviceName + " COURT", hostedGamesToWin);
                 Role = LanSessionRole.Hosting;
-                Status = "コートを開設しました。相手を待っています。";
+                Status = hostedGamesToWin + "ゲーム先取でコートを開設しました。相手を待っています。";
                 ErrorMessage = string.Empty;
                 return true;
             }
@@ -211,6 +215,7 @@ namespace PrideCourt.Networking
             StopTransport();
             PrepareAuthoritativeWorld();
             onlineSession = true;
+            hostedGamesToWin = MatchScore.DefaultGamesToWin;
             localIdentity = identity;
             localDeck = deck.ToArray();
             nearAthlete.SetIdentity(identity);
@@ -244,6 +249,7 @@ namespace PrideCourt.Networking
         {
             StopTransport();
             PrepareAuthoritativeWorld();
+            hostedGamesToWin = MatchScore.DefaultGamesToWin;
             nearAthlete.SetCommandSource(localInput);
             farAthlete.SetCommandSource(cpuInput);
             nearCards.SetCpuControlled(false);
@@ -267,7 +273,7 @@ namespace PrideCourt.Networking
         public bool StartRematch()
         {
             if (Role != LanSessionRole.Host || match == null) return false;
-            match.StartNewMatch();
+            match.StartNewMatch(match.Score.GamesToWin);
             return true;
         }
 
@@ -383,7 +389,8 @@ namespace PrideCourt.Networking
                                 lastAppliedSequence = snapshot.Sequence;
                                 match.ApplyLanState(snapshot);
                                 if (localSettingsOpen) match.SetSettingsPaused(true);
-                                Status = onlineSession ? "ネット対戦中" : "LAN対戦中";
+                                Status = (onlineSession ? "ネット対戦中" : "LAN対戦中") +
+                                         " / " + match.Score.GamesToWin + "ゲーム先取";
                             }
                             break;
                         case LanPacketType.SettingsPause when Role == LanSessionRole.Host:
@@ -424,9 +431,10 @@ namespace PrideCourt.Networking
             }
             farAthlete.SetIdentity(guestIdentity);
             farCards.RebuildDeck(guestDeck);
-            match.StartNewMatch();
+            match.StartNewMatch(hostedGamesToWin);
             Role = LanSessionRole.Host;
-            Status = onlineSession ? "ネット対戦中" : "LAN対戦中";
+            Status = (onlineSession ? "ネット対戦中" : "LAN対戦中") +
+                     " / " + hostedGamesToWin + "ゲーム先取";
             if (!onlineSession) discovery.StopHost();
             peer.Send(LanPacketType.Welcome, Array.Empty<byte>());
             peer.Send(LanPacketType.Snapshot, LanBattleProtocol.EncodeSnapshot(match.CaptureLanState(++snapshotSequence)));

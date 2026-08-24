@@ -46,3 +46,6 @@ __pycache__/
 /*.zip
 crash.dmp
 sysinfo.txt
+
+# Internal handoff notes are not part of the public repository
+/AI_PROJECT_HANDOFF.md

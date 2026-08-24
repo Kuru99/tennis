@@ -1,6 +1,7 @@
 using PrideCourt.Domain;
 using PrideCourt.Input;
 using PrideCourt.Cards;
+using PrideCourt.Presentation;
 using UnityEngine;
 
 namespace PrideCourt.Gameplay
@@ -14,6 +15,7 @@ namespace PrideCourt.Gameplay
         private const float DiveStrongReturnExtraCost = 10f;
         private const float DiveDuration = 0.28f;
         private const float ShotBufferSeconds = 0.55f;
+        private const float SpecialGaugeGainMultiplier = 2f;
 
         [SerializeField] private CourtSide side;
         [SerializeField] private AthleteIdentity identity;
@@ -41,8 +43,29 @@ namespace PrideCourt.Gameplay
         private float speedMultiplier = 1f;
         private float dashCostMultiplier = 1f;
         private float strongCostMultiplier = 1f;
+        private float movementResponseMultiplier = 1f;
+        private float nextDiveCostMultiplier = 1f;
+        private float nextDiveRecoveryMultiplier = 1f;
+        private float activeDiveRecoveryMultiplier = 1f;
         private float nextShotSpinMultiplier = 1f;
         private float nextShotAccuracyMultiplier = 1f;
+        private float nextShotTrickStrength;
+        private bool nextShotDecoy;
+        private bool nextShotFalseTell;
+        private float baseShotSpeedMultiplier = 1f;
+        private float baseShotAccuracyMultiplier = 1f;
+        private float baseDashCostMultiplier = 1f;
+        private float baseStrongCostMultiplier = 1f;
+        private float specialSpeedMultiplier = 1f;
+        private float shotBuffRemaining;
+        private float shotBuffSpeedMultiplier = 1f;
+        private float shotBuffAccuracyMultiplier = 1f;
+        private float luciaFinisherRemaining;
+        private float visualDisruptionRemaining;
+        private float timeDisruptionRemaining;
+        private int mistakeGuardCharges;
+        private bool dragonAwakeningArmed;
+        private float dragonAwakeningRemaining;
         private bool specialReserved;
         private Renderer bodyRenderer;
         private bool isDashingMotion;
@@ -67,6 +90,8 @@ namespace PrideCourt.Gameplay
         public bool IsDiveSequenceActive => diveSequenceActive;
         public bool IsServingMotion => match != null && match.ServeRestrictionsActive && match.Server == side;
         public bool IsServeTossedMotion => IsServingMotion && ball != null && ball.IsTossed;
+        public bool IsDragonAwakened => dragonAwakeningRemaining > 0f;
+        public int MistakeGuardCharges => mistakeGuardCharges;
 
         private void Awake()
         {
@@ -113,7 +138,7 @@ namespace PrideCourt.Gameplay
             networkReplica = value;
             if (characterController == null) characterController = GetComponent<CharacterController>();
             if (characterController != null) characterController.enabled = !value;
-            pendingShot = null;
+            ClearPendingShot();
             planarVelocity = Vector3.zero;
             hasReplicaTarget = false;
         }
@@ -158,40 +183,49 @@ namespace PrideCourt.Gameplay
             ApplyIdentityStats();
         }
 
+        public void ResetSpecialForNewGame()
+        {
+            SpecialGauge.Reset();
+            specialReserved = false;
+        }
+
         private void ApplyIdentityStats()
         {
-            if (identity == AthleteIdentity.Lux)
-            {
-                walkSpeed = 6.2f;
-                dashMultiplier = 1.65f;
-                acceleration = 22f;
-                brakingAcceleration = 58f;
-                hitRadius = 2.05f;
-            }
-            else
-            {
-                walkSpeed = 4.75f;
-                dashMultiplier = 1.42f;
-                acceleration = 13f;
-                brakingAcceleration = 46f;
-                hitRadius = 2.7f;
-            }
+            AthleteDefinition definition = AthleteCatalog.Get(identity);
+            AthleteStats stats = definition.Stats;
+            walkSpeed = stats.WalkSpeed;
+            dashMultiplier = stats.DashMultiplier;
+            acceleration = stats.Acceleration;
+            brakingAcceleration = stats.BrakingAcceleration;
+            hitRadius = stats.HitRadius;
+            diveSpeed = stats.DiveSpeed;
+            baseShotSpeedMultiplier = stats.ShotSpeedMultiplier;
+            baseShotAccuracyMultiplier = stats.ShotAccuracyMultiplier;
+            baseDashCostMultiplier = stats.DashCostMultiplier;
+            baseStrongCostMultiplier = stats.StrongCostMultiplier;
+            specialSpeedMultiplier = stats.SpecialSpeedMultiplier;
 
-            Color identityColor = identity == AthleteIdentity.Lux
-                ? new Color(0.08f, 0.85f, 0.95f)
-                : new Color(1f, 0.72f, 0.08f);
+            Color identityColor = identity switch
+            {
+                AthleteIdentity.Lux => new Color(0.08f, 0.85f, 0.95f),
+                AthleteIdentity.Bastion => new Color(1f, 0.72f, 0.08f),
+                AthleteIdentity.Lucia => new Color(0.1f, 0.86f, 0.48f),
+                AthleteIdentity.Charlotte => new Color(0.86f, 0.12f, 0.18f),
+                AthleteIdentity.Zephyr => new Color(0.22f, 0.72f, 1f),
+                _ => new Color(0.62f, 0.82f, 0.18f)
+            };
             Renderer rootRenderer = GetComponent<Renderer>();
             if (rootRenderer != null && rootRenderer.enabled)
             {
                 rootRenderer.material.color = identityColor;
             }
-            Transform luxVisual = transform.Find("Lux Silhouette");
-            Transform bastionVisual = transform.Find("Bastion Silhouette");
-            if (luxVisual != null) luxVisual.gameObject.SetActive(identity == AthleteIdentity.Lux);
-            if (bastionVisual != null) bastionVisual.gameObject.SetActive(identity == AthleteIdentity.Bastion);
+            foreach (AthleteIdentity candidate in AthleteCatalog.All)
+            {
+                Transform visual = transform.Find(AthleteCatalog.Get(candidate).InternalName + " Silhouette");
+                if (visual != null) visual.gameObject.SetActive(identity == candidate);
+            }
             ResolveMotionView();
-            gameObject.name = (identity == AthleteIdentity.Lux ? "Lux" : "Bastion") +
-                              (side == CourtSide.Near ? " - Player" : " - CPU");
+            gameObject.name = definition.InternalName + (side == CourtSide.Near ? " - Player" : " - CPU");
         }
 
         private void Update()
@@ -237,7 +271,7 @@ namespace PrideCourt.Gameplay
         {
             planarVelocity = Vector3.zero;
             isDashingMotion = false;
-            pendingShot = null;
+            ClearPendingShot();
             diveTimeRemaining = 0f;
             diveRecoveryRemaining = 0f;
             diveSequenceActive = false;
@@ -275,13 +309,14 @@ namespace PrideCourt.Gameplay
                 ClampToCourtHalf();
                 if (diveTimeRemaining <= 0f)
                 {
-                    diveRecoveryRemaining = 0.62f;
+                    diveRecoveryRemaining = 0.62f * activeDiveRecoveryMultiplier;
+                    activeDiveRecoveryMultiplier = 1f;
                 }
                 return;
             }
 
             if (!match.ServeRestrictionsActive && command.DivePressed && command.DiveDirection.sqrMagnitude > 0.1f &&
-                Stamina.TrySpendCommitted(DiveCost))
+                Stamina.TrySpendCommitted(DiveCost * nextDiveCostMultiplier))
             {
                 Vector3 direction = new Vector3(
                     command.DiveDirection.x,
@@ -290,6 +325,9 @@ namespace PrideCourt.Gameplay
                 diveVelocity = direction * diveSpeed;
                 diveTimeRemaining = DiveDuration;
                 diveSequenceActive = true;
+                activeDiveRecoveryMultiplier = nextDiveRecoveryMultiplier;
+                nextDiveCostMultiplier = 1f;
+                nextDiveRecoveryMultiplier = 1f;
                 planarVelocity = Vector3.zero;
                 motionView?.PlayDive(command.DiveDirection);
                 return;
@@ -302,6 +340,7 @@ namespace PrideCourt.Gameplay
             bool wantsDash = !servePhase && command.Dash && input.sqrMagnitude > 0.04f && !Stamina.IsExhausted;
             isDashingMotion = wantsDash;
             float speed = walkSpeed * speedMultiplier * (wantsDash ? dashMultiplier : 1f);
+            if (timeDisruptionRemaining > 0f) speed *= 0.68f;
             if (Stamina.IsExhausted)
             {
                 speed *= 0.7f;
@@ -309,7 +348,7 @@ namespace PrideCourt.Gameplay
 
             if (wantsDash)
             {
-                Stamina.TrySpend(DashCostPerSecond * dashCostMultiplier * Time.deltaTime);
+                Stamina.TrySpend(DashCostPerSecond * dashCostMultiplier * baseDashCostMultiplier * Time.deltaTime);
             }
             else
             {
@@ -323,6 +362,8 @@ namespace PrideCourt.Gameplay
             bool isBraking = desiredVelocity.sqrMagnitude < planarVelocity.sqrMagnitude ||
                              Vector3.Dot(planarVelocity, desiredVelocity) < 0f;
             float movementResponse = isBraking ? brakingAcceleration : acceleration;
+            movementResponse *= movementResponseMultiplier;
+            if (timeDisruptionRemaining > 0f) movementResponse *= 0.62f;
             planarVelocity = Vector3.MoveTowards(planarVelocity, desiredVelocity, movementResponse * courtAcceleration * Time.deltaTime);
             characterController.Move((planarVelocity + Vector3.down * 2f) * Time.deltaTime);
             ClampToCourtHalf();
@@ -383,7 +424,7 @@ namespace PrideCourt.Gameplay
 
             if (match.Phase != MatchPhase.Rally && !match.IsServeAwaitingReturn)
             {
-                pendingShot = null;
+                ClearPendingShot();
                 return;
             }
 
@@ -391,7 +432,14 @@ namespace PrideCourt.Gameplay
             {
                 ShotPower power = command.StrongPressed ? ShotPower.Strong : ShotPower.Safe;
                 pendingShot = new ShotRequest(power, ResolveShotKind(power, command.Move), Time.time, command.Move);
+                ShotPower presentedPower = nextShotFalseTell ? Opposite(power) : power;
+                motionView?.PrepareStroke(presentedPower, ResolveStrokeMotion(false));
             }
+        }
+
+        private static ShotPower Opposite(ShotPower power)
+        {
+            return power == ShotPower.Strong ? ShotPower.Safe : ShotPower.Strong;
         }
 
         private StrokeMotion ResolveStrokeMotion(bool isServe)
@@ -425,26 +473,37 @@ namespace PrideCourt.Gameplay
             ShotRequest request = pendingShot.Value;
             if (Time.time - request.RequestedAt > ShotBufferSeconds)
             {
-                pendingShot = null;
+                ClearPendingShot();
                 return;
             }
 
+            if (!ball.CanBeHitBy(side)) return;
+
             float distance = Vector3.Distance(transform.position, ball.transform.position);
-            if (distance > hitRadius)
+            bool canAfterburnerIntercept = identity == AthleteIdentity.Zephyr &&
+                                           specialReserved && SpecialGauge.IsReady &&
+                                           distance <= hitRadius + 3.6f;
+            if (distance > hitRadius && !canAfterburnerIntercept)
             {
                 return;
             }
 
             if (ball.TryRegisterDoubleHit(side))
             {
-                pendingShot = null;
+                ClearPendingShot();
                 return;
             }
 
-            if (!ball.CanBeHitBy(side)) return;
+            if (distance > hitRadius)
+            {
+                PerformAfterburnerIntercept();
+                distance = Vector3.Distance(transform.position, ball.transform.position);
+                if (distance > hitRadius) return;
+            }
 
             ShotPower resolvedPower = request.Power;
-            float strongCost = (diveSequenceActive ? DiveStrongReturnExtraCost : StrongShotCost) * strongCostMultiplier;
+            float strongCost = (diveSequenceActive ? DiveStrongReturnExtraCost : StrongShotCost) *
+                               strongCostMultiplier * baseStrongCostMultiplier;
             if (resolvedPower == ShotPower.Strong && !Stamina.TrySpend(strongCost))
             {
                 resolvedPower = ShotPower.Safe;
@@ -453,13 +512,29 @@ namespace PrideCourt.Gameplay
             TimingGrade timing = distance <= hitRadius * 0.35f
                 ? TimingGrade.Just
                 : distance <= hitRadius * 0.75f ? TimingGrade.Normal : TimingGrade.Mishit;
+            if (timing == TimingGrade.Mishit && mistakeGuardCharges > 0)
+            {
+                mistakeGuardCharges--;
+                timing = TimingGrade.Normal;
+                match.NotifyMistakeGuard(side);
+            }
             match.NotifyShotTiming(side, timing);
 
             AimZone aim = ResolveAimZone(currentCommand.Move);
             float spin = nextShotSpinMultiplier;
-            float accuracy = nextShotAccuracyMultiplier;
+            float accuracy = nextShotAccuracyMultiplier * baseShotAccuracyMultiplier *
+                             (shotBuffRemaining > 0f ? shotBuffAccuracyMultiplier : 1f) *
+                             (visualDisruptionRemaining > 0f ? 1.35f : 1f);
+            float trickStrength = nextShotTrickStrength;
+            float shotSpeed = baseShotSpeedMultiplier * (shotBuffRemaining > 0f ? shotBuffSpeedMultiplier : 1f);
+            if (luciaFinisherRemaining > 0f)
+            {
+                shotSpeed *= 1.16f;
+                luciaFinisherRemaining = 0f;
+            }
             nextShotSpinMultiplier = 1f;
             nextShotAccuracyMultiplier = 1f;
+            nextShotTrickStrength = 0f;
 
             if (specialReserved && SpecialGauge.IsReady)
             {
@@ -467,22 +542,49 @@ namespace PrideCourt.Gameplay
                 match.PlaySpecialCutIn(this, () =>
                 {
                     if (!SpecialGauge.TryConsumeAll()) return;
-                    ExecuteRallyStroke(request, capturedKind, resolvedPower, aim, timing, spin, accuracy, true);
+                    float awakenedBoost = IsDragonAwakened ? 1.14f : 1f;
+                    HandleSpecialActivated();
+                    ExecuteRallyStroke(request, capturedKind, resolvedPower, aim, timing, spin, accuracy,
+                        shotSpeed * specialSpeedMultiplier * awakenedBoost, trickStrength, true);
                 });
                 specialReserved = false;
             }
             else
             {
-                ExecuteRallyStroke(request, request.Kind, resolvedPower, aim, timing, spin, accuracy, false);
+                ExecuteRallyStroke(request, request.Kind, resolvedPower, aim, timing, spin, accuracy,
+                    shotSpeed, trickStrength, false);
             }
 
             if (diveSequenceActive)
             {
                 diveTimeRemaining = 0f;
-                diveRecoveryRemaining = 0.22f;
+                diveRecoveryRemaining = 0.22f * activeDiveRecoveryMultiplier;
+                activeDiveRecoveryMultiplier = 1f;
             }
-            SpecialGauge.Add(timing == TimingGrade.Just ? 5f : 3f);
+            float gaugeGain = timing == TimingGrade.Just ? 5f : 3f;
+            if (IsDragonAwakened) gaugeGain *= 1.7f;
+            SpecialGauge.Add(gaugeGain * SpecialGaugeGainMultiplier);
+            ClearPendingShot();
+        }
+
+        private void PerformAfterburnerIntercept()
+        {
+            Vector3 offset = ball.transform.position - transform.position;
+            offset.y = 0f;
+            float stopDistance = hitRadius * 0.32f;
+            float travel = Mathf.Min(3.6f, Mathf.Max(0f, offset.magnitude - stopDistance));
+            if (travel <= 0f || characterController == null) return;
+
+            characterController.Move(offset.normalized * travel);
+            ClampToCourtHalf();
+            planarVelocity = offset.normalized * walkSpeed * dashMultiplier;
+            isDashingMotion = true;
+        }
+
+        private void ClearPendingShot()
+        {
             pendingShot = null;
+            motionView?.CancelStrokePreparation();
         }
 
         private void ExecuteRallyStroke(
@@ -493,11 +595,17 @@ namespace PrideCourt.Gameplay
             TimingGrade timing,
             float spin,
             float accuracy,
+            float shotSpeed,
+            float trickStrength,
             bool isSpecial)
         {
             StrokeMotion motion = ResolveStrokeMotion(false);
-            motionView?.PlayStroke(power, request.InitialDirection.x, motion);
-            ball.StrikeRally(this, kind, power, aim, timing, spin, accuracy, isSpecial);
+            ShotPower presentedPower = nextShotFalseTell ? Opposite(power) : power;
+            motionView?.PlayStroke(presentedPower, request.InitialDirection.x, motion);
+            ball.StrikeRally(this, kind, power, aim, timing, spin, accuracy, shotSpeed, trickStrength, isSpecial);
+            if (nextShotDecoy) BallDecoyEffect.Play(ball.transform, side);
+            nextShotFalseTell = false;
+            nextShotDecoy = false;
         }
 
         private void ClampToCourtHalf()
@@ -576,11 +684,12 @@ namespace PrideCourt.Gameplay
             characterController.enabled = true;
             planarVelocity = Vector3.zero;
             isDashingMotion = false;
-            pendingShot = null;
+            ClearPendingShot();
             Stamina.ResetForPoint();
             diveTimeRemaining = 0f;
             diveRecoveryRemaining = 0f;
             diveSequenceActive = false;
+            activeDiveRecoveryMultiplier = 1f;
             specialReserved = false;
             serveStrikeInputReleased = false;
             ClearExpiredPointEffects();
@@ -591,7 +700,33 @@ namespace PrideCourt.Gameplay
             speedMultiplier = speed;
             dashCostMultiplier = dashCost;
             strongCostMultiplier = strongCost;
+            movementResponseMultiplier = 1f;
             personalBuffRemaining = duration;
+        }
+
+        public void ApplyMobilityBuff(float speed, float dashCost, float response, float duration)
+        {
+            speedMultiplier = Mathf.Max(0.1f, speed);
+            dashCostMultiplier = Mathf.Max(0.1f, dashCost);
+            strongCostMultiplier = 1f;
+            movementResponseMultiplier = Mathf.Max(0.1f, response);
+            personalBuffRemaining = Mathf.Max(0f, duration);
+        }
+
+        public void QueueDiveAssist(float staminaCost, float recovery)
+        {
+            nextDiveCostMultiplier = Mathf.Clamp(staminaCost, 0.1f, 1f);
+            nextDiveRecoveryMultiplier = Mathf.Clamp(recovery, 0.1f, 1f);
+        }
+
+        public void QueueShotDecoy()
+        {
+            nextShotDecoy = true;
+        }
+
+        public void QueueFalseTell()
+        {
+            nextShotFalseTell = true;
         }
 
         public void QueueNextShotModifier(float spin, float accuracy)
@@ -606,20 +741,114 @@ namespace PrideCourt.Gameplay
             speedMultiplier = 1f;
             dashCostMultiplier = 1f;
             strongCostMultiplier = 1f;
+            movementResponseMultiplier = 1f;
+            nextDiveCostMultiplier = 1f;
+            nextDiveRecoveryMultiplier = 1f;
+            activeDiveRecoveryMultiplier = 1f;
             nextShotSpinMultiplier = 1f;
             nextShotAccuracyMultiplier = 1f;
+            nextShotTrickStrength = 0f;
+            nextShotDecoy = false;
+            nextShotFalseTell = false;
+            shotBuffRemaining = 0f;
+            shotBuffSpeedMultiplier = 1f;
+            shotBuffAccuracyMultiplier = 1f;
+            luciaFinisherRemaining = 0f;
+            visualDisruptionRemaining = 0f;
+            timeDisruptionRemaining = 0f;
+            mistakeGuardCharges = 0;
+            dragonAwakeningArmed = false;
+            dragonAwakeningRemaining = 0f;
+            SetAwakenedView(false);
         }
 
         private void TickTimedEffects()
         {
-            if (personalBuffRemaining <= 0f || match == null || match.IsGameplayPaused) return;
-            personalBuffRemaining -= Time.deltaTime;
-            if (personalBuffRemaining <= 0f)
+            if (match == null || match.IsGameplayPaused) return;
+            if (personalBuffRemaining > 0f)
             {
-                speedMultiplier = 1f;
-                dashCostMultiplier = 1f;
-                strongCostMultiplier = 1f;
+                personalBuffRemaining -= Time.deltaTime;
+                if (personalBuffRemaining <= 0f)
+                {
+                    speedMultiplier = 1f;
+                    dashCostMultiplier = 1f;
+                    strongCostMultiplier = 1f;
+                    movementResponseMultiplier = 1f;
+                }
             }
+            if (shotBuffRemaining > 0f) shotBuffRemaining -= Time.deltaTime;
+            if (luciaFinisherRemaining > 0f) luciaFinisherRemaining -= Time.deltaTime;
+            if (visualDisruptionRemaining > 0f) visualDisruptionRemaining -= Time.deltaTime;
+            if (timeDisruptionRemaining > 0f) timeDisruptionRemaining -= Time.deltaTime;
+            if (dragonAwakeningArmed && (match.ValidRallyReturns >= 6 || match.IsUnderPressure(side)))
+            {
+                dragonAwakeningArmed = false;
+                dragonAwakeningRemaining = 9f;
+                SetAwakenedView(true);
+                match.NotifyDragonAwakening(side);
+            }
+            if (dragonAwakeningRemaining > 0f)
+            {
+                dragonAwakeningRemaining -= Time.deltaTime;
+                if (dragonAwakeningRemaining <= 0f) SetAwakenedView(false);
+            }
+        }
+
+        public void ApplyShotBuff(float speed, float accuracy, float duration)
+        {
+            shotBuffSpeedMultiplier = Mathf.Max(0.1f, speed);
+            shotBuffAccuracyMultiplier = Mathf.Max(0.1f, accuracy);
+            shotBuffRemaining = Mathf.Max(0f, duration);
+        }
+
+        public void QueueTrickShot(float strength)
+        {
+            nextShotTrickStrength = Mathf.Max(nextShotTrickStrength, strength);
+        }
+
+        public void PrepareLuciaFinisher(float duration)
+        {
+            luciaFinisherRemaining = Mathf.Max(luciaFinisherRemaining, duration);
+        }
+
+        public void ApplyVisualDisruption(float duration)
+        {
+            visualDisruptionRemaining = Mathf.Max(visualDisruptionRemaining, duration);
+        }
+
+        public void ApplyTimeDisruption(float duration)
+        {
+            timeDisruptionRemaining = Mathf.Max(timeDisruptionRemaining, duration);
+        }
+
+        public void GrantMistakeGuard(int charges)
+        {
+            mistakeGuardCharges = Mathf.Clamp(mistakeGuardCharges + charges, 0, 2);
+        }
+
+        public void ArmDragonAwakening()
+        {
+            dragonAwakeningArmed = true;
+            if (match != null && (match.ValidRallyReturns >= 6 || match.IsUnderPressure(side)))
+            {
+                dragonAwakeningArmed = false;
+                dragonAwakeningRemaining = 9f;
+                SetAwakenedView(true);
+                match.NotifyDragonAwakening(side);
+            }
+        }
+
+        private void HandleSpecialActivated()
+        {
+            if (identity == AthleteIdentity.Lucia) cardLoadout?.GrantSpecialEncore();
+            motionView?.PlaySignatureSpecial();
+        }
+
+        private void SetAwakenedView(bool value)
+        {
+            GeneratedCharacterRig[] rigs = GetComponentsInChildren<GeneratedCharacterRig>(true);
+            for (int i = 0; i < rigs.Length; i++)
+                if (rigs[i].Identity == AthleteIdentity.Charlotte) rigs[i].SetAwakened(value);
         }
     }
 }

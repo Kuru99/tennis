@@ -48,6 +48,9 @@ namespace PrideCourt.Domain
         public MatchPhase Phase;
         public int NearPoints;
         public int FarPoints;
+        public int NearGames;
+        public int FarGames;
+        public int GamesToWin;
         public int CompletedPoints;
         public float PhaseTimeRemaining;
         public bool ServeHasBeenStruck;

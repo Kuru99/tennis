@@ -30,7 +30,7 @@ namespace PrideCourt.Networking
 
     public static class LanBattleProtocol
     {
-        public const int Version = 2;
+        public const int Version = 4;
         public const int GamePort = 47772;
         public const int DiscoveryPort = 47771;
         public const int MaximumPacketBytes = 64 * 1024;
@@ -115,6 +115,9 @@ namespace PrideCourt.Networking
                 writer.Write((byte)state.Phase);
                 writer.Write(state.NearPoints);
                 writer.Write(state.FarPoints);
+                writer.Write(state.NearGames);
+                writer.Write(state.FarGames);
+                writer.Write(state.GamesToWin);
                 writer.Write(state.CompletedPoints);
                 writer.Write(state.PhaseTimeRemaining);
                 writer.Write(state.ServeHasBeenStruck);
@@ -140,6 +143,9 @@ namespace PrideCourt.Networking
                 Phase = (MatchPhase)reader.ReadByte(),
                 NearPoints = reader.ReadInt32(),
                 FarPoints = reader.ReadInt32(),
+                NearGames = reader.ReadInt32(),
+                FarGames = reader.ReadInt32(),
+                GamesToWin = reader.ReadInt32(),
                 CompletedPoints = reader.ReadInt32(),
                 PhaseTimeRemaining = reader.ReadSingle(),
                 ServeHasBeenStruck = reader.ReadBoolean(),

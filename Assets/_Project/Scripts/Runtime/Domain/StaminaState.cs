@@ -5,8 +5,8 @@ namespace PrideCourt.Domain
     [Serializable]
     public sealed class StaminaState
     {
-        public const float Maximum = 100f;
-        public const float ExhaustionRecoveryThreshold = 80f;
+        public const float Maximum = 80f;
+        public const float ExhaustionRecoveryThreshold = Maximum * 0.8f;
         public const float RecoveryDelayAfterSpend = 0.4f;
 
         private float recoveryDelay;

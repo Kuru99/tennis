@@ -1,0 +1,47 @@
+newmtl Charlotte_Navy
+Kd 0.025 0.06 0.18
+Ka 0.02 0.02 0.02
+Ks 0.08 0.08 0.08
+Ns 18
+
+newmtl Charlotte_Crimson
+Kd 0.62 0.025 0.07
+Ka 0.02 0.02 0.02
+Ks 0.08 0.08 0.08
+Ns 18
+
+newmtl Charlotte_Skin
+Kd 0.74 0.46 0.36
+Ka 0.02 0.02 0.02
+Ks 0.08 0.08 0.08
+Ns 18
+
+newmtl Charlotte_Red
+Kd 0.42 0.025 0.06
+Ka 0.02 0.02 0.02
+Ks 0.08 0.08 0.08
+Ns 18
+
+newmtl Charlotte_Gold
+Kd 0.92 0.57 0.08
+Ka 0.02 0.02 0.02
+Ks 0.08 0.08 0.08
+Ns 18
+
+newmtl Eye_Cyan
+Kd 0.08 0.9 1
+Ka 0.02 0.02 0.02
+Ks 0.08 0.08 0.08
+Ns 18
+
+newmtl Paper
+Kd 0.92 0.95 0.9
+Ka 0.02 0.02 0.02
+Ks 0.08 0.08 0.08
+Ns 18
+
+newmtl Ink
+Kd 0.015 0.025 0.075
+Ka 0.02 0.02 0.02
+Ks 0.08 0.08 0.08
+Ns 18

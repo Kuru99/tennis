@@ -56,7 +56,11 @@ namespace PrideCourt.Domain
     public enum AthleteIdentity
     {
         Lux,
-        Bastion
+        Bastion,
+        Lucia,
+        Charlotte,
+        Zephyr,
+        Poko
     }
 
     public enum CpuDifficulty
@@ -87,7 +91,19 @@ namespace PrideCourt.Domain
         FlashStep,
         TailFeint,
         RailBoost,
-        AnchorCore
+        AnchorCore,
+        LeafVeil,
+        MischiefCurve,
+        TimeTease,
+        DragonGrace,
+        NobleRetake,
+        DragonAwakening,
+        JetIgnition,
+        VectorWing,
+        AirBrake,
+        LeafMasquerade,
+        BorrowedForm,
+        FalseTell
     }
 
     [Serializable]

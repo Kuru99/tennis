@@ -1,0 +1,35 @@
+newmtl Zephyr_White
+Kd 0.82 0.88 0.92
+Ka 0.02 0.02 0.02
+Ks 0.08 0.08 0.08
+Ns 18
+
+newmtl Zephyr_Gunmetal
+Kd 0.055 0.08 0.13
+Ka 0.02 0.02 0.02
+Ks 0.08 0.08 0.08
+Ns 18
+
+newmtl Zephyr_Cyan
+Kd 0.02 0.64 0.92
+Ka 0.02 0.02 0.02
+Ks 0.08 0.08 0.08
+Ns 18
+
+newmtl Zephyr_Magenta
+Kd 0.92 0.04 0.38
+Ka 0.02 0.02 0.02
+Ks 0.08 0.08 0.08
+Ns 18
+
+newmtl Zephyr_Visor
+Kd 0.015 0.13 0.24
+Ka 0.02 0.02 0.02
+Ks 0.08 0.08 0.08
+Ns 18
+
+newmtl Paper
+Kd 0.92 0.95 0.9
+Ka 0.02 0.02 0.02
+Ks 0.08 0.08 0.08
+Ns 18

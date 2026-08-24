@@ -1,3 +1,4 @@
+using PrideCourt.Gameplay;
 using PrideCourt.Presentation;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -49,6 +50,7 @@ namespace PrideCourt.Editor
             Material banner = CreateOrUpdateMaterial("Stadium_Punk_Banner", Color.white, bannerTexture, new Color(0.1f, 0.1f, 0.16f));
 
             GameObject root = new GameObject(RootName);
+            root.transform.localScale = new Vector3(TennisCourtGeometry.CourtWidthMultiplier, 1f, 1f);
             root.AddComponent<StadiumEnvironment>();
 
             CreateFarBackdrop(root.transform, mural, structure);

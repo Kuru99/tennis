@@ -28,12 +28,14 @@ namespace PrideCourt.Gameplay
         private TennisAthleteController tossingAthlete;
         private bool specialBall;
         private AthleteIdentity specialOwner;
+        private float activeTrickStrength;
         private LineRenderer lobLandingMarker;
         private bool networkReplica;
         private bool hasReplicaTarget;
         private Vector3 replicaTargetPosition;
         private Quaternion replicaTargetRotation;
         private ShotPower activeServePower;
+        private float activeServeExpectedHorizontalSign;
         private Vector3 activeFlightAcceleration;
         private bool touchedNetThisFlight;
         private bool serveReturnedBeforeBounce;
@@ -79,7 +81,11 @@ namespace PrideCourt.Gameplay
             }
 
             if ((state == BallState.ServeFlight || state == BallState.RallyFlight) &&
-                (transform.position.y < -2f || Mathf.Abs(transform.position.x) > 7.5f || Mathf.Abs(transform.position.z) > 14f))
+                (transform.position.y < -2f ||
+                 !TennisCourtGeometry.IsInsideSimulationBounds(
+                     transform.position.x,
+                     transform.position.z,
+                     GetWorldBallRadius())))
             {
                 ResolveOutOfBounds();
             }
@@ -162,6 +168,7 @@ namespace PrideCourt.Gameplay
             bounceCount = 0;
             hasLegalBounce = false;
             specialBall = false;
+            activeServeExpectedHorizontalSign = 0f;
             activeFlightAcceleration = ScaledGravity;
             touchedNetThisFlight = false;
             serveReturnedBeforeBounce = false;
@@ -229,6 +236,9 @@ namespace PrideCourt.Gameplay
             hasLegalBounce = false;
             touchedNetThisFlight = false;
             lastNetContactTime = float.NegativeInfinity;
+            // The server is allowed to move after contact, so keep the strike-time
+            // side for the eventual service-box check.
+            activeServeExpectedHorizontalSign = ResolveServeHorizontalSign(athlete);
             Vector3 target = ResolveServeTarget(athlete, aim);
             activeServePower = power;
             float duration = power == ShotPower.Strong ? 0.62f : 0.78f;
@@ -290,6 +300,21 @@ namespace PrideCourt.Gameplay
             float accuracyMultiplier,
             bool isSpecial)
         {
+            StrikeRally(athlete, kind, power, aim, timing, spinMultiplier, accuracyMultiplier, 1f, 0f, isSpecial);
+        }
+
+        public void StrikeRally(
+            TennisAthleteController athlete,
+            ShotKind kind,
+            ShotPower power,
+            AimZone aim,
+            TimingGrade timing,
+            float spinMultiplier,
+            float accuracyMultiplier,
+            float shotSpeedMultiplier,
+            float trickStrength,
+            bool isSpecial)
+        {
             if (!CanBeHitBy(athlete.Side))
             {
                 return;
@@ -310,11 +335,23 @@ namespace PrideCourt.Gameplay
             lastNetContactTime = float.NegativeInfinity;
             specialBall = isSpecial;
             specialOwner = athlete.Identity;
+            activeTrickStrength = Mathf.Max(0f, trickStrength);
             Vector3 target = ResolveRallyTarget(athlete.Side.Opposite(), kind, aim, timing, accuracyMultiplier);
+            if (activeTrickStrength > 0f)
+            {
+                target.x += Random.Range(-0.78f, 0.78f) * activeTrickStrength * TennisCourtGeometry.CourtWidthMultiplier;
+                target.x = Mathf.Clamp(target.x, -TennisCourtGeometry.HalfWidth + 0.28f,
+                    TennisCourtGeometry.HalfWidth - 0.28f);
+            }
             bool isLob = kind == ShotKind.AttackLob || kind == ShotKind.DefensiveLob;
             SetLobMarkerVisible(isLob, target);
-            float duration = ResolveFlightDuration(kind, power, timing) / Mathf.Max(0.85f, spinMultiplier);
+            float duration = ResolveFlightDuration(kind, power, timing) /
+                             (Mathf.Max(0.85f, spinMultiplier) * Mathf.Max(0.72f, shotSpeedMultiplier));
             Vector3 curveAcceleration = ResolveFlightCurve(kind, target, spinMultiplier);
+            if (activeTrickStrength > 0f)
+            {
+                curveAcceleration.x += Random.Range(-3.2f, 3.2f) * activeTrickStrength;
+            }
             float clearanceMargin = ResolveNetClearanceMargin(kind, timing);
             LaunchTo(target, duration, curveAcceleration, ResolveMinimumNetCenterHeight(clearanceMargin));
             state = BallState.RallyFlight;
@@ -324,6 +361,10 @@ namespace PrideCourt.Gameplay
                 match.NotifyValidServe();
             }
             PrideCourtAudio.PlayHitEffect(power == ShotPower.Strong);
+            if (match != null && match.Phase == MatchPhase.Rally)
+            {
+                PrideCourtAudio.PlayRallyVoice(athlete.Identity);
+            }
             match.NotifyRallyReturn();
         }
 
@@ -363,7 +404,11 @@ namespace PrideCourt.Gameplay
             if (state == BallState.ServeFlight)
             {
                 bool insideCorrectServiceBox = insideCourt &&
-                                               IsInsideCorrectServiceBox(bouncePosition, lastHitter, tossingAthlete, ballRadius);
+                                               IsInsideCorrectServiceBox(
+                                                   bouncePosition,
+                                                   lastHitter,
+                                                   activeServeExpectedHorizontalSign,
+                                                   ballRadius);
                 if (touchedNetThisFlight && insideCorrectServiceBox)
                 {
                     EnterDead();
@@ -421,6 +466,16 @@ namespace PrideCourt.Gameplay
                     velocity.x += direction * (4.2f * SpeedMultiplier);
                     body.linearVelocity = velocity;
                 }
+                if (activeTrickStrength > 0f && bounceCount == 1)
+                {
+                    Vector3 velocity = body.linearVelocity;
+                    float surpriseDirection = Mathf.Abs(velocity.x) < 0.15f
+                        ? (Random.value < 0.5f ? -1f : 1f)
+                        : -Mathf.Sign(velocity.x);
+                    velocity.x += surpriseDirection * (2.6f * activeTrickStrength * SpeedMultiplier);
+                    body.linearVelocity = velocity;
+                    activeTrickStrength = 0f;
+                }
             }
         }
 
@@ -469,6 +524,7 @@ namespace PrideCourt.Gameplay
         {
             state = BallState.Dead;
             activeFlightAcceleration = Vector3.zero;
+            activeTrickStrength = 0f;
             SetLobMarkerVisible(false, Vector3.zero);
 
             if (body == null)
@@ -569,12 +625,12 @@ namespace PrideCourt.Gameplay
         {
             float magnitude = aim switch
             {
-                AimZone.DeepLeft or AimZone.DeepRight => 3.95f * TennisCourtGeometry.Scale,
-                AimZone.ShallowLeft or AimZone.ShallowRight => 2.75f * TennisCourtGeometry.Scale,
-                _ => 1.1f * TennisCourtGeometry.Scale
+                AimZone.DeepLeft or AimZone.DeepRight => 3.95f * TennisCourtGeometry.LateralScale,
+                AimZone.ShallowLeft or AimZone.ShallowRight => 2.75f * TennisCourtGeometry.LateralScale,
+                _ => 1.1f * TennisCourtGeometry.LateralScale
             };
 
-            float requiredSign = server.transform.position.x <= 0f ? 1f : -1f;
+            float requiredSign = ResolveServeHorizontalSign(server);
             float z = server.Side == CourtSide.Near ? 4.2f * TennisCourtGeometry.Scale : -4.2f * TennisCourtGeometry.Scale;
             return new Vector3(requiredSign * magnitude, 0.25f, z);
         }
@@ -583,10 +639,10 @@ namespace PrideCourt.Gameplay
         {
             float x = aim switch
             {
-                AimZone.DeepLeft => -5.05f * TennisCourtGeometry.Scale,
-                AimZone.ShallowLeft => -3.15f * TennisCourtGeometry.Scale,
-                AimZone.ShallowRight => 3.15f * TennisCourtGeometry.Scale,
-                AimZone.DeepRight => 5.05f * TennisCourtGeometry.Scale,
+                AimZone.DeepLeft => -5.05f * TennisCourtGeometry.LateralScale,
+                AimZone.ShallowLeft => -3.15f * TennisCourtGeometry.LateralScale,
+                AimZone.ShallowRight => 3.15f * TennisCourtGeometry.LateralScale,
+                AimZone.DeepRight => 5.05f * TennisCourtGeometry.LateralScale,
                 _ => 0f
             };
 
@@ -594,12 +650,12 @@ namespace PrideCourt.Gameplay
 
             if (timing == TimingGrade.Mishit)
             {
-                x += Random.Range(-1.15f, 1.15f) * accuracyMultiplier;
+                x += Random.Range(-1.15f, 1.15f) * TennisCourtGeometry.CourtWidthMultiplier * accuracyMultiplier;
                 depth += Random.Range(-1.1f, 1.1f) * accuracyMultiplier;
             }
             else if (timing == TimingGrade.Normal && Mathf.Abs((int)aim) == 2)
             {
-                x += Random.Range(-0.45f, 0.45f) * accuracyMultiplier;
+                x += Random.Range(-0.45f, 0.45f) * TennisCourtGeometry.CourtWidthMultiplier * accuracyMultiplier;
             }
 
             float z = targetSide == CourtSide.Near ? -depth : depth;
@@ -627,21 +683,25 @@ namespace PrideCourt.Gameplay
         private static bool IsInsideCorrectServiceBox(
             Vector3 point,
             CourtSide server,
-            TennisAthleteController serverAthlete,
+            float expectedHorizontalSign,
             float ballRadius)
         {
-            if (serverAthlete == null)
+            if (Mathf.Abs(expectedHorizontalSign) < 0.5f)
             {
                 return false;
             }
 
-            float expectedSign = serverAthlete.transform.position.x <= 0f ? 1f : -1f;
             return TennisCourtGeometry.IsBallInServiceBox(
                 point.x,
                 point.z,
                 server,
-                expectedSign,
+                expectedHorizontalSign,
                 ballRadius);
+        }
+
+        private static float ResolveServeHorizontalSign(TennisAthleteController server)
+        {
+            return server.transform.position.x <= 0f ? 1f : -1f;
         }
 
         private void CreateLobLandingMarker()

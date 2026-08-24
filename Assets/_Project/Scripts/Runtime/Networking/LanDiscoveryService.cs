@@ -16,6 +16,7 @@ namespace PrideCourt.Networking
         public string Address;
         public int Port;
         public string RoomName;
+        public int GamesToWin;
         public DateTime LastSeenUtc;
         public string Key => Address + ":" + Port;
     }
@@ -26,11 +27,13 @@ namespace PrideCourt.Networking
         private CancellationTokenSource hostCancellation;
         private UdpClient hostSocket;
         private string roomName = string.Empty;
+        private int gamesToWin;
 
-        public void StartHost(string configuredRoomName)
+        public void StartHost(string configuredRoomName, int configuredGamesToWin)
         {
             StopHost();
             roomName = Sanitize(configuredRoomName);
+            gamesToWin = configuredGamesToWin;
             hostCancellation = new CancellationTokenSource();
             hostSocket = new UdpClient(AddressFamily.InterNetwork);
             hostSocket.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
@@ -78,7 +81,7 @@ namespace PrideCourt.Networking
                     byte[] request = hostSocket.Receive(ref endpoint);
                     if (!request.SequenceEqual(expected)) continue;
                     string responseText = LanBattleProtocol.Signature + "|HOST|" + LanBattleProtocol.Version + "|" +
-                                          LanBattleProtocol.GamePort + "|" + roomName;
+                                          LanBattleProtocol.GamePort + "|" + roomName + "|" + gamesToWin;
                     byte[] response = Encoding.UTF8.GetBytes(responseText);
                     hostSocket.Send(response, response.Length, endpoint);
                 }
@@ -105,12 +108,15 @@ namespace PrideCourt.Networking
                         IPEndPoint endpoint = new IPEndPoint(IPAddress.Any, 0);
                         byte[] response = socket.Receive(ref endpoint);
                         string[] parts = Encoding.UTF8.GetString(response).Split('|');
-                        if (parts.Length < 5 || parts[0] != LanBattleProtocol.Signature || parts[1] != "HOST" ||
+                        if (parts.Length < 6 || parts[0] != LanBattleProtocol.Signature || parts[1] != "HOST" ||
                             !int.TryParse(parts[2], out int version) || version != LanBattleProtocol.Version ||
-                            !int.TryParse(parts[3], out int port)) continue;
+                            !int.TryParse(parts[3], out int port) ||
+                            !int.TryParse(parts[5], out int discoveredGamesToWin) ||
+                            !PrideCourt.Domain.MatchScore.IsSupportedGamesToWin(discoveredGamesToWin)) continue;
                         discovered.Enqueue(new LanDiscoveredHost
                         {
-                            Address = endpoint.Address.ToString(), Port = port, RoomName = parts[4], LastSeenUtc = DateTime.UtcNow
+                            Address = endpoint.Address.ToString(), Port = port, RoomName = parts[4],
+                            GamesToWin = discoveredGamesToWin, LastSeenUtc = DateTime.UtcNow
                         });
                     }
                     catch (SocketException exception) when (exception.SocketErrorCode == SocketError.TimedOut) { }

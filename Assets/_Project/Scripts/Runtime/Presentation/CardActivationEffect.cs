@@ -77,6 +77,18 @@ namespace PrideCourt.Presentation
                 CardId.TailFeint => new Color(0.92f, 0.24f, 1f, 1f),
                 CardId.RailBoost => new Color(1f, 0.68f, 0.08f, 1f),
                 CardId.AnchorCore => new Color(0.2f, 0.72f, 1f, 1f),
+                CardId.LeafVeil => new Color(0.18f, 1f, 0.5f, 1f),
+                CardId.MischiefCurve => new Color(0.9f, 0.18f, 1f, 1f),
+                CardId.TimeTease => new Color(0.2f, 0.92f, 1f, 1f),
+                CardId.DragonGrace => new Color(1f, 0.48f, 0.08f, 1f),
+                CardId.NobleRetake => new Color(1f, 0.82f, 0.2f, 1f),
+                CardId.DragonAwakening => new Color(0.95f, 0.08f, 0.12f, 1f),
+                CardId.JetIgnition => new Color(0.08f, 0.82f, 1f, 1f),
+                CardId.VectorWing => new Color(0.34f, 0.72f, 1f, 1f),
+                CardId.AirBrake => new Color(1f, 0.42f, 0.08f, 1f),
+                CardId.LeafMasquerade => new Color(0.5f, 0.88f, 0.12f, 1f),
+                CardId.BorrowedForm => new Color(0.22f, 1f, 0.58f, 1f),
+                CardId.FalseTell => new Color(1f, 0.18f, 0.62f, 1f),
                 _ => PrideCourtUiTheme.Cyan
             };
 

@@ -16,6 +16,7 @@ namespace PrideCourt.Presentation
         private AudioSource generalSource;
         private AudioSource hitSource;
         private AudioSource bounceSource;
+        private AudioSource rallyVoiceSource;
         [Header("Ball Effect Audio")]
         [SerializeField] private AudioClip hitSoft;
         [SerializeField] private AudioClip hitStrong;
@@ -32,10 +33,15 @@ namespace PrideCourt.Presentation
         private AudioClip special;
         private AudioClip bounceSpecial;
         private readonly List<AudioClip> generatedClips = new List<AudioClip>();
+        private readonly Dictionary<AthleteIdentity, AudioClip[]> rallyVoiceClips =
+            new Dictionary<AthleteIdentity, AudioClip[]>();
+        private readonly Dictionary<AthleteIdentity, int> rallyVoiceIndices =
+            new Dictionary<AthleteIdentity, int>();
         private bool initialized;
 
         public int HitPlayCount { get; private set; }
         public int BouncePlayCount { get; private set; }
+        public int RallyVoicePlayCount { get; private set; }
         public bool HasPlayableBallEffects =>
             hitSoft != null && hitStrong != null &&
             bounceSoft != null && bounceHard != null && bounceSpecial != null;
@@ -95,11 +101,13 @@ namespace PrideCourt.Presentation
             ConfigureSource(generalSource);
             hitSource = CreateEffectSource();
             bounceSource = CreateEffectSource();
+            rallyVoiceSource = CreateEffectSource();
 
             hitSoft = ResolveBallClip(hitSoft, "Audio/Ball/RacketHit_Soft", () => CreateRacketHit("Racket Hit Soft", false));
             hitStrong = ResolveBallClip(hitStrong, "Audio/Ball/RacketHit_Strong", () => CreateRacketHit("Racket Hit Strong", true));
             bounceSoft = ResolveBallClip(bounceSoft, "Audio/Ball/TennisBounce_Soft", () => CreateCourtBounce("Court Bounce Soft", false));
             bounceHard = ResolveBallClip(bounceHard, "Audio/Ball/TennisBounce_Hard", () => CreateCourtBounce("Court Bounce Hard", true));
+            LoadRallyVoices();
             net = CreateGenerated(() => CreateTone("Net Cord", 145f, 0.12f, 12f, true));
             cardBuff = CreateGenerated(() => CreateSweep("Card Buff", 340f, 720f, 0.24f, 6f, 0.15f));
             cardInstant = CreateGenerated(() => CreateSweep("Card Instant", 760f, 1080f, 0.2f, 8f, 0.05f));
@@ -121,6 +129,42 @@ namespace PrideCourt.Presentation
 
             AudioClip resourceClip = Resources.Load<AudioClip>(resourcePath);
             return resourceClip != null ? resourceClip : CreateGenerated(fallbackFactory);
+        }
+
+        private void LoadRallyVoices()
+        {
+            rallyVoiceClips.Clear();
+            rallyVoiceIndices.Clear();
+            foreach (AthleteIdentity identity in AthleteCatalog.All)
+            {
+                string resourceKey = ResolveRallyVoiceResourceKey(identity);
+                rallyVoiceClips[identity] = new[]
+                {
+                    Resources.Load<AudioClip>("Audio/Voice/" + resourceKey + "_hit1"),
+                    Resources.Load<AudioClip>("Audio/Voice/" + resourceKey + "_hit2")
+                };
+            }
+        }
+
+        private static string ResolveRallyVoiceResourceKey(AthleteIdentity identity)
+        {
+            switch (identity)
+            {
+                case AthleteIdentity.Lux:
+                    return "lux";
+                case AthleteIdentity.Bastion:
+                    return "basudexion";
+                case AthleteIdentity.Zephyr:
+                    return "zefer";
+                case AthleteIdentity.Poko:
+                    return "pon";
+                case AthleteIdentity.Lucia:
+                    return "lucia";
+                case AthleteIdentity.Charlotte:
+                    return "chal";
+                default:
+                    return identity.ToString().ToLowerInvariant();
+            }
         }
 
         private AudioClip CreateGenerated(Func<AudioClip> factory)
@@ -161,6 +205,48 @@ namespace PrideCourt.Presentation
             if (Play(hitSource, clip, volume, strong ? 0.96f : 1.04f))
             {
                 HitPlayCount++;
+            }
+        }
+
+        public static void PlayRallyVoice(AthleteIdentity identity)
+        {
+            EnsureAvailable().PlayRallyVoiceInternal(identity);
+        }
+
+        private void PlayRallyVoiceInternal(AthleteIdentity identity)
+        {
+            EnsureInitialized();
+            if (!rallyVoiceClips.TryGetValue(identity, out AudioClip[] clips) || clips == null || clips.Length == 0)
+            {
+                return;
+            }
+
+            AudioClip first = clips[0];
+            AudioClip second = clips.Length > 1 ? clips[1] : null;
+            if (first == null && second == null)
+            {
+                return;
+            }
+
+            int nextIndex = rallyVoiceIndices.TryGetValue(identity, out int storedIndex) ? storedIndex : 0;
+            AudioClip clip;
+            if (first == null)
+            {
+                clip = second;
+            }
+            else if (second == null)
+            {
+                clip = first;
+            }
+            else
+            {
+                clip = clips[nextIndex % 2];
+                rallyVoiceIndices[identity] = nextIndex + 1;
+            }
+
+            if (Play(rallyVoiceSource, clip, 0.84f, 1f))
+            {
+                RallyVoicePlayCount++;
             }
         }
 

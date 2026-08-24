@@ -12,6 +12,8 @@ namespace PrideCourt.Gameplay
         private const float ServeLimitSeconds = 10f;
         private const float PointResultSeconds = 1.35f;
         private const float CardSelectionSeconds = 15f;
+        private const float GameAwardPopupSeconds = 1.2f;
+        private const float GameAwardPopupExitSeconds = 0.2f;
 
         [SerializeField] private TennisAthleteController nearAthlete;
         [SerializeField] private TennisAthleteController farAthlete;
@@ -33,6 +35,10 @@ namespace PrideCourt.Gameplay
         private float timingMessageRemaining;
         private Texture2D specialCutInTexture;
         private bool networkReplica;
+        private float visualDisruptionRemaining;
+        private int visualDisruptionSeed;
+        private float gameAwardPopupRemaining;
+        private CourtSide gameAwardPopupWinner;
 
         public MatchPhase Phase { get; private set; } = MatchPhase.Preparing;
         public bool HasStarted { get; private set; }
@@ -45,6 +51,8 @@ namespace PrideCourt.Gameplay
         public bool IsServeAwaitingReturn => Phase == MatchPhase.Serving && serveHasBeenStruck;
         public bool IsGameplayPaused => isGameplayPaused;
         public bool HasSpecialCutInTexture => specialCutInTexture != null;
+        public int ValidRallyReturns => validRallyReturns;
+        public bool IsGameAwardPopupVisible => gameAwardPopupRemaining > 0f;
         public CourtSide LocalPlayerSide { get; private set; } = CourtSide.Near;
         public float AccelerationMultiplier => activeCourtCard == CardId.GripCourt ? 1.25f : activeCourtCard == CardId.SlipCourt ? 0.65f : 1f;
         public float BounceMultiplier => activeCourtCard == CardId.HighBounce ? 1.3f : 1f;
@@ -74,6 +82,9 @@ namespace PrideCourt.Gameplay
 
         private void Update()
         {
+            if (visualDisruptionRemaining > 0f) visualDisruptionRemaining -= Time.unscaledDeltaTime;
+            if (gameAwardPopupRemaining > 0f)
+                gameAwardPopupRemaining = Mathf.Max(0f, gameAwardPopupRemaining - Time.unscaledDeltaTime);
             if (networkReplica) return;
             if (!HasStarted) return;
             if (isGameplayPaused) return;
@@ -154,6 +165,9 @@ namespace PrideCourt.Gameplay
                 Phase = Phase,
                 NearPoints = score.NearPoints,
                 FarPoints = score.FarPoints,
+                NearGames = score.NearGames,
+                FarGames = score.FarGames,
+                GamesToWin = score.GamesToWin,
                 CompletedPoints = score.CompletedPoints,
                 PhaseTimeRemaining = phaseTimer,
                 ServeHasBeenStruck = serveHasBeenStruck,
@@ -171,16 +185,25 @@ namespace PrideCourt.Gameplay
 
         public void ApplyLanState(LanMatchState state)
         {
+            bool hadStarted = HasStarted;
+            int previousNearGames = score.NearGames;
+            int previousFarGames = score.FarGames;
+            bool remoteGameCompleted = state.NearGames > previousNearGames || state.FarGames > previousFarGames;
             networkReplica = true;
             HasStarted = state.HasStarted;
             Phase = state.Phase;
-            score.Restore(state.NearPoints, state.FarPoints, state.CompletedPoints);
+            score.Restore(state.NearPoints, state.FarPoints, state.NearGames, state.FarGames,
+                state.CompletedPoints, state.GamesToWin);
             phaseTimer = state.PhaseTimeRemaining;
             serveHasBeenStruck = state.ServeHasBeenStruck;
             isGameplayPaused = state.IsGameplayPaused;
             Time.timeScale = isGameplayPaused ? 0f : 1f;
             statusMessage = state.StatusMessage ?? string.Empty;
             activeCourtCard = state.HasActiveCourtCard ? state.ActiveCourtCard : null;
+            if (hadStarted && remoteGameCompleted)
+            {
+                BeginGameAwardPopup(state.NearGames > previousNearGames ? CourtSide.Near : CourtSide.Far);
+            }
             nearAthlete.ApplyLanState(state.NearAthlete);
             farAthlete.ApplyLanState(state.FarAthlete);
             ball.ApplyLanState(state.Ball);
@@ -190,10 +213,18 @@ namespace PrideCourt.Gameplay
 
         public void StartNewMatch()
         {
+            StartNewMatch(score.GamesToWin);
+        }
+
+        public void StartNewMatch(int gamesToWin)
+        {
             StopAllCoroutines();
             Time.timeScale = 1f;
             isGameplayPaused = false;
+            score.ConfigureGamesToWin(gamesToWin);
             score.Reset();
+            nearAthlete?.ResetSpecialForNewGame();
+            farAthlete?.ResetSpecialForNewGame();
             serveFaults = 0;
             validRallyReturns = 0;
             serveHasBeenStruck = false;
@@ -201,6 +232,7 @@ namespace PrideCourt.Gameplay
             grantNearReward = false;
             grantFarReward = false;
             timingMessage = string.Empty;
+            gameAwardPopupRemaining = 0f;
             phaseTimer = 0.2f;
             Phase = MatchPhase.Preparing;
             HasStarted = true;
@@ -215,6 +247,7 @@ namespace PrideCourt.Gameplay
             HasStarted = false;
             Phase = MatchPhase.Preparing;
             statusMessage = "プライド・コート";
+            gameAwardPopupRemaining = 0f;
             ball.ResetForServe(nearAthlete);
         }
 
@@ -306,6 +339,39 @@ namespace PrideCourt.Gameplay
             statusMessage = AthleteLabel(side) + "のカード — " + cardName;
         }
 
+        public void ApplyVisualDisruption(CourtSide source, float duration)
+        {
+            TennisAthleteController target = AthleteFor(source.Opposite());
+            target?.ApplyVisualDisruption(duration);
+            if (target != null && target.Side == LocalPlayerSide)
+            {
+                visualDisruptionRemaining = Mathf.Max(visualDisruptionRemaining, duration);
+                visualDisruptionSeed = UnityEngine.Random.Range(1, 10000);
+            }
+        }
+
+        public void ApplyTimeDisruption(CourtSide source, float duration)
+        {
+            AthleteFor(source.Opposite())?.ApplyTimeDisruption(duration);
+        }
+
+        public bool IsUnderPressure(CourtSide side)
+        {
+            int own = side == CourtSide.Near ? score.NearPoints : score.FarPoints;
+            int opponent = side == CourtSide.Near ? score.FarPoints : score.NearPoints;
+            return opponent > own;
+        }
+
+        public void NotifyMistakeGuard(CourtSide side)
+        {
+            statusMessage = AthleteLabel(side) + "のノーブル・リテイク — 判定を修正";
+        }
+
+        public void NotifyDragonAwakening(CourtSide side)
+        {
+            statusMessage = AthleteLabel(side) + " — 竜醒";
+        }
+
         public void ApplyCourtCard(CardId card)
         {
             activeCourtCard = card;
@@ -324,7 +390,9 @@ namespace PrideCourt.Gameplay
             isGameplayPaused = true;
             float previousScale = Time.timeScale;
             Time.timeScale = 0f;
-            statusMessage = athlete.Identity == AthleteIdentity.Lux ? "ミラージュ・バウンド" : "グラビティ・ドライブ";
+            specialCutInTexture = Resources.Load<Texture2D>("SpecialCutIns/" + athlete.Identity) ??
+                                  Resources.Load<Texture2D>("SpecialCutIn");
+            statusMessage = AthleteCatalog.Get(athlete.Identity).SpecialName;
             yield return new WaitForSecondsRealtime(1.2f);
             strike();
             Time.timeScale = 0.35f;
@@ -375,13 +443,26 @@ namespace PrideCourt.Gameplay
             }
 
             ball?.StopForPointEnd();
+            int gamesBeforePoint = score.GetGames(winner);
             score.AwardPoint(winner);
+            bool gameCompleted = score.GetGames(winner) > gamesBeforePoint;
+            if (gameCompleted && !score.IsMatchOver)
+            {
+                nearAthlete?.ResetSpecialForNewGame();
+                farAthlete?.ResetSpecialForNewGame();
+            }
             PrideCourtAudio.Instance?.PlayPoint();
             bool rewardEligible = validRallyReturns >= 1;
             grantNearReward = rewardEligible && nearCards != null && !nearCards.UsedCardThisPoint && !nearCards.Hand.HasCharacterCard;
             grantFarReward = rewardEligible && farCards != null && !farCards.UsedCardThisPoint && !farCards.Hand.HasCharacterCard;
             activeCourtCard = null;
-            statusMessage = AthleteLabel(winner) + "のポイント — " + reason;
+            statusMessage = gameCompleted
+                ? AthleteLabel(winner) + "がゲーム獲得 — " + reason
+                : AthleteLabel(winner) + "のポイント — " + reason;
+            if (gameCompleted)
+            {
+                BeginGameAwardPopup(winner);
+            }
             if (score.TryGetWinner(out CourtSide matchWinner))
             {
                 Phase = MatchPhase.MatchOver;
@@ -401,15 +482,20 @@ namespace PrideCourt.Gameplay
             Rect safe = Screen.safeArea;
             float scale = Mathf.Clamp(Mathf.Min(Screen.width / 1280f, Screen.height / 720f), 0.72f, 1.3f) * HudPreferences.Scale;
             float scoreWidth = Mathf.Clamp(safe.width * 0.24f, 250f * scale, 430f * scale);
-            Rect scorePanel = new Rect(safe.center.x - scoreWidth * 0.5f, safe.y + 14f * scale, scoreWidth, 66f * scale);
+            Rect scorePanel = new Rect(safe.center.x - scoreWidth * 0.5f, safe.y + 14f * scale, scoreWidth, 84f * scale);
             PrideCourtUiTheme.DrawPanel(scorePanel, PrideCourtUiTheme.Tone.Cyan, scale);
-            PrideCourtUiTheme.DrawTag(new Rect(scorePanel.x + 12f * scale, scorePanel.y - 5f * scale, 74f * scale, 23f * scale),
-                "ポイント", PrideCourtUiTheme.Tone.Magenta, scale);
-            GUI.Label(new Rect(scorePanel.x + 8f * scale, scorePanel.y + 8f * scale, scorePanel.width - 16f * scale, 52f * scale),
+            PrideCourtUiTheme.DrawTag(new Rect(scorePanel.x + 12f * scale, scorePanel.y - 5f * scale, 104f * scale, 23f * scale),
+                PrideCourtUiTheme.FormatGameStars(score.GamesToWin, score.GamesToWin) + " 先取", PrideCourtUiTheme.Tone.Magenta, scale);
+            GUI.Label(new Rect(scorePanel.x + 8f * scale, scorePanel.y + 5f * scale, scorePanel.width - 16f * scale, 42f * scale),
                 LocalPlayerSide == CourtSide.Near
                     ? $"{score.NearPoints}  —  {score.FarPoints}"
                     : $"{score.FarPoints}  —  {score.NearPoints}",
                 PrideCourtUiTheme.Heading(scale, TextAnchor.MiddleCenter));
+            GUI.Label(new Rect(scorePanel.x + 8f * scale, scorePanel.y + 46f * scale, scorePanel.width - 16f * scale, 28f * scale),
+                LocalPlayerSide == CourtSide.Near
+                    ? $"ゲーム  {PrideCourtUiTheme.FormatGameStars(score.NearGames, score.GamesToWin)}  —  {PrideCourtUiTheme.FormatGameStars(score.FarGames, score.GamesToWin)}"
+                    : $"ゲーム  {PrideCourtUiTheme.FormatGameStars(score.FarGames, score.GamesToWin)}  —  {PrideCourtUiTheme.FormatGameStars(score.NearGames, score.GamesToWin)}",
+                PrideCourtUiTheme.Label(scale, 13, TextAnchor.MiddleCenter, PrideCourtUiTheme.Muted));
 
             GUIStyle statusStyle = PrideCourtUiTheme.Heading(scale * 0.62f, TextAnchor.MiddleCenter, PrideCourtUiTheme.Cyan);
 
@@ -438,6 +524,11 @@ namespace PrideCourt.Gameplay
                 DrawSpecialCutIn(safe, scale);
             }
 
+            if (visualDisruptionRemaining > 0f)
+            {
+                DrawVisualDisruption(safe, scale);
+            }
+
             if (!string.IsNullOrEmpty(statusMessage) && !isGameplayPaused)
             {
                 GUI.Label(new Rect(safe.x + safe.width * 0.2f, safe.y + safe.height * 0.17f, safe.width * 0.6f, 48f * scale),
@@ -458,6 +549,60 @@ namespace PrideCourt.Gameplay
                 GUI.Label(new Rect(safe.center.x - 140f * scale, scorePanel.yMax + 28f * scale, 280f * scale, 32f * scale),
                     $"カード選択 / {Mathf.CeilToInt(CardSelectionTimeRemaining)}", statusStyle);
             }
+
+            if (gameAwardPopupRemaining > 0f)
+            {
+                DrawGameAwardPopup(safe, scale);
+            }
+        }
+
+        private void BeginGameAwardPopup(CourtSide winner)
+        {
+            gameAwardPopupWinner = winner;
+            gameAwardPopupRemaining = GameAwardPopupSeconds;
+        }
+
+        private void DrawGameAwardPopup(Rect safe, float scale)
+        {
+            float elapsed = GameAwardPopupSeconds - gameAwardPopupRemaining;
+            float enter = Mathf.Clamp01(elapsed / 0.16f);
+            float exit = Mathf.Clamp01(gameAwardPopupRemaining / GameAwardPopupExitSeconds);
+            float alpha = Mathf.Min(enter, exit);
+            float emphasis = Mathf.Lerp(0.92f, 1f, 1f - (1f - enter) * (1f - enter));
+            float width = Mathf.Min(safe.width * 0.78f, 760f * scale);
+            float height = 238f * scale;
+            Rect panel = new Rect(safe.center.x - width * emphasis * 0.5f,
+                safe.center.y - height * emphasis * 0.5f,
+                width * emphasis, height * emphasis);
+            PrideCourtUiTheme.Tone tone = gameAwardPopupWinner == LocalPlayerSide
+                ? PrideCourtUiTheme.Tone.Cyan
+                : PrideCourtUiTheme.Tone.Yellow;
+
+            Color previous = GUI.color;
+            GUI.color = new Color(0f, 0f, 0f, 0.34f * alpha);
+            GUI.DrawTexture(safe, Texture2D.whiteTexture);
+            GUI.color = new Color(1f, 1f, 1f, alpha);
+            PrideCourtUiTheme.DrawPanel(panel, tone, scale, "GAME WON");
+            PrideCourtUiTheme.DrawSolid(new Rect(panel.x + 34f * scale, panel.y + 38f * scale,
+                    panel.width - 68f * scale, 3f * scale), PrideCourtUiTheme.ToneColor(tone));
+            GUI.Label(new Rect(panel.x + 26f * scale, panel.y + 48f * scale,
+                    panel.width - 52f * scale, 50f * scale), "ゲーム獲得",
+                PrideCourtUiTheme.Heading(scale * 1.26f, TextAnchor.MiddleCenter,
+                    PrideCourtUiTheme.ToneColor(tone)));
+            GUI.Label(new Rect(panel.x + 26f * scale, panel.y + 104f * scale,
+                    panel.width - 52f * scale, 34f * scale),
+                AthleteLabel(gameAwardPopupWinner) + "  /  " + FormatLocalGameScore(),
+                PrideCourtUiTheme.Label(scale, 16, TextAnchor.MiddleCenter, PrideCourtUiTheme.Paper));
+            PrideCourtUiTheme.DrawTag(new Rect(panel.x + panel.width * 0.23f, panel.y + 154f * scale,
+                    panel.width * 0.54f, 36f * scale), "次のゲームへ", PrideCourtUiTheme.Tone.Neutral, scale);
+            GUI.color = previous;
+        }
+
+        private string FormatLocalGameScore()
+        {
+            return LocalPlayerSide == CourtSide.Near
+                ? $"ゲーム {PrideCourtUiTheme.FormatGameStars(score.NearGames, score.GamesToWin)}  —  {PrideCourtUiTheme.FormatGameStars(score.FarGames, score.GamesToWin)}"
+                : $"ゲーム {PrideCourtUiTheme.FormatGameStars(score.FarGames, score.GamesToWin)}  —  {PrideCourtUiTheme.FormatGameStars(score.NearGames, score.GamesToWin)}";
         }
 
         private void DrawSpecialCutIn(Rect safe, float scale)
@@ -494,8 +639,41 @@ namespace PrideCourt.Gameplay
 
         private string AthleteLabel(CourtSide side)
         {
-            TennisAthleteController athlete = side == CourtSide.Near ? nearAthlete : farAthlete;
-            return athlete != null && athlete.Identity == AthleteIdentity.Bastion ? "バスティオン" : "ルクス";
+            TennisAthleteController athlete = AthleteFor(side);
+            return athlete == null ? string.Empty : AthleteCatalog.Get(athlete.Identity).DisplayName;
+        }
+
+        private TennisAthleteController AthleteFor(CourtSide side)
+        {
+            return side == CourtSide.Near ? nearAthlete : farAthlete;
+        }
+
+        private void DrawVisualDisruption(Rect safe, float scale)
+        {
+            float normalized = Mathf.Clamp01(visualDisruptionRemaining / 1.6f);
+            Color previous = GUI.color;
+            UnityEngine.Random.State previousState = UnityEngine.Random.state;
+            UnityEngine.Random.InitState(visualDisruptionSeed);
+            for (int i = 0; i < 16; i++)
+            {
+                float width = UnityEngine.Random.Range(20f, 54f) * scale;
+                float height = width * UnityEngine.Random.Range(0.28f, 0.5f);
+                Rect leaf = new Rect(
+                    safe.x + UnityEngine.Random.Range(0f, Mathf.Max(1f, safe.width - width)),
+                    safe.y + UnityEngine.Random.Range(0f, Mathf.Max(1f, safe.height - height)),
+                    width,
+                    height);
+                Matrix4x4 matrix = GUI.matrix;
+                GUIUtility.RotateAroundPivot(UnityEngine.Random.Range(-65f, 65f), leaf.center);
+                Color leafColor = i % 3 == 0
+                    ? new Color(1f, 0.12f, 0.62f, 0.32f * normalized)
+                    : new Color(0.12f, 0.95f, 0.55f, 0.38f * normalized);
+                GUI.color = leafColor;
+                GUI.DrawTexture(leaf, Texture2D.whiteTexture);
+                GUI.matrix = matrix;
+            }
+            UnityEngine.Random.state = previousState;
+            GUI.color = previous;
         }
 
         private static void DrawResourceBars(TennisAthleteController athlete)
@@ -516,7 +694,9 @@ namespace PrideCourt.Gameplay
             PrideCourtUiTheme.DrawBar(new Rect(x, y, width, 21f * scale), athlete.Stamina.Normalized, staminaColor,
                 athlete.Stamina.IsExhausted ? "スタミナ / 疲労" : "スタミナ", scale);
             PrideCourtUiTheme.DrawBar(new Rect(x, y + 26f * scale, width, 18f * scale), athlete.SpecialGauge.Normalized,
-                PrideCourtUiTheme.Yellow, "スペシャル", scale);
+                PrideCourtUiTheme.Yellow,
+                athlete.IsDragonAwakened ? "スペシャル / 竜醒" : athlete.SpecialGauge.IsReady ? "スペシャル / READY" : "スペシャル",
+                scale);
         }
     }
 }
