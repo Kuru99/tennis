@@ -1,7 +1,7 @@
 # PRIDE COURT / プライド・コート
 
 カードで流れを変えながら戦う、Windows／Android向け3Dテニスゲームです。
-このリポジトリは **Beta版（v0.1.0-beta）** の公開ページです。仕様、操作感、データ、対応端末はBeta期間中に変更される場合があります。
+このリポジトリは **Beta版（v0.1.1-beta）** の公開ページです。仕様、操作感、データ、対応端末はBeta期間中に変更される場合があります。
 
 ## Beta版で遊べる範囲
 
@@ -16,9 +16,9 @@
 ## ダウンロード
 
 配布ビルドはGitHubの [Releases](https://github.com/Kuru99/tennis/releases) に掲載します。
-Windows版はReleaseページにあるZIPを展開して実行し、Android版はReleaseページにあるAPKを端末へインストールしてください。
+Windows版はReleaseページにある `PrideCourt-Windows-Setup.exe` を実行し、Android版はReleaseページにあるAPKを端末へインストールしてください。
 
-- Windows：Windows x64、展開後のゲームフォルダ一式が必要です。実行ファイル単体では起動できません。
+- Windows：Windows x64。インストーラーがゲームフォルダ一式を配置します。インストール後はスタートメニューまたはデスクトップのショートカットから起動できます。
 - Android：Android 8.0（API 26）以上、横画面を対象としています。署名付きストア配布版ではない場合、OSの警告が表示されることがあります。
 - 配布ビルドのハッシュ、変更点、既知の問題は各Release本文を確認してください。
 
