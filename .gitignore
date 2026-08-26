@@ -12,6 +12,9 @@
 /Assets/_Recovery/
 /Assets/_Recovery.meta
 
+# AI working temp directory
+/.codex-tmp/
+
 # IDE and generated project files
 /.vs/
 /.idea/
