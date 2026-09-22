@@ -1649,24 +1649,73 @@ namespace PrideCourt.Presentation
                 PrideCourtUiTheme.CardPanel(PrideCourtUiTheme.ToneColor(IdentityTone(identity)), scale));
         }
 
-        private static void DrawTopAlignedCrop(Rect rect, Texture2D texture)
+                private static void DrawTopAlignedCrop(Rect rect, Texture2D texture)
         {
             float sourceAspect = texture.width / (float)texture.height;
             float targetAspect = rect.width / Mathf.Max(1f, rect.height);
             Rect uv;
-            if (sourceAspect > targetAspect)
+            
+            // タヌキ（ぽこ）の判定。名前の一部に文字が含まれているかチェックします
+            bool isTanuki = texture != null && (texture.name.Contains("Tanuki") || texture.name.Contains("p1") || texture.name.Contains("poko") || texture.name.ToLower().Contains("poko"));
+
+            if (isTanuki)
             {
+                // 💡【タヌキ専用ルート】
+                // 縦長・横長の自動計算をすべて無視して、タヌキ専用の切り取り範囲（UV）をここで強制指定します！
+                // これで絶対に見た目が変わるはずです。
+                float vHeight = 0.45f; // 縦の表示範囲（ズームアウト）
+                float vPos = 0.4f;     // 位置を一番下に固定して顔を上に引き上げる
+                
+                uv = new Rect(0f, vPos, 1f, vHeight);
+            }
+            else if (sourceAspect > targetAspect)
+            {
+                // 【通常キャラ】横に長い表示枠の場合の計算
                 float visibleWidth = targetAspect / sourceAspect;
                 uv = new Rect((1f - visibleWidth) * 0.5f, 0f, visibleWidth, 1f);
             }
             else
             {
+                // 【通常キャラ】縦に長い表示枠の場合の計算
                 float visibleHeight = sourceAspect / targetAspect;
                 uv = new Rect(0f, 1f - visibleHeight, 1f, visibleHeight);
             }
 
             GUI.DrawTextureWithTexCoords(rect, texture, uv, true);
         }
+
+        // private static void DrawTopAlignedCrop(Rect rect, Texture2D texture)
+        // {
+        //     float sourceAspect = texture.width / (float)texture.height;
+        //     float targetAspect = rect.width / Mathf.Max(1f, rect.height);
+        //     Rect uv;
+        //     if (sourceAspect > targetAspect)
+        //     {
+        //         float visibleWidth = targetAspect / sourceAspect;
+        //         uv = new Rect((1f - visibleWidth) * 0.5f, 0f, visibleWidth, 1f);
+        //     }
+        //     else
+        //     {
+        //         float visibleHeight = sourceAspect / targetAspect;
+
+        //         float finalVPos = 1f - visibleHeight;
+        //         if (texture.name.Contains("poko.png") || texture.name.Contains("p1"))
+        //         { 
+        //         // 数値を引く（または足す）ことで切り取り位置を上下にずらせます
+        //         // 0.1f〜0.2f ほどの範囲で微調整してみてください
+        //         finalVPos += 0.15f; 
+        
+        //         // 画面外にはみ出さないように安全ガードをかける
+        //         finalVPos = Mathf.Clamp(finalVPos, 0f, 1f - visibleHeight);
+        //         }
+
+
+                
+        //         uv = new Rect(0f, 1f - visibleHeight, 1f, visibleHeight);
+        //     }
+
+        //     GUI.DrawTextureWithTexCoords(rect, texture, uv, true);
+        // }
 
         private static int AllowedCardCount(AthleteIdentity identity)
         {

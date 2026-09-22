@@ -32,7 +32,7 @@ OutputBaseFilename=PrideCourt-Windows-Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
-UninstallDisplayIcon={app}\PrideCourt.exe
+UninstallDisplayIcon={app}\プライド・コート.exe
 UninstallDisplayName=PRIDE COURT {#AppVersion}
 VersionInfoVersion=0.1.1.0
 VersionInfoCompany=Pride Court Studio
@@ -56,8 +56,8 @@ Source: "{#RepoDir}\Assets\_Project\Docs\PROTOTYPE_CONTROLS.md"; DestDir: "{app}
 Source: "{#RepoDir}\Assets\_Project\Docs\THIRD_PARTY_ASSETS.md"; DestDir: "{app}"; DestName: "THIRD_PARTY_ASSETS.md"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\PRIDE COURT"; Filename: "{app}\PrideCourt.exe"; WorkingDir: "{app}"; Comment: "PRIDE COURT"
-Name: "{autodesktop}\PRIDE COURT"; Filename: "{app}\PrideCourt.exe"; WorkingDir: "{app}"; Comment: "PRIDE COURT"; Tasks: desktopicon
+Name: "{group}\PRIDE COURT"; Filename: "{app}\プライド・コート.exe"; WorkingDir: "{app}"; Comment: "PRIDE COURT"
+Name: "{autodesktop}\PRIDE COURT"; Filename: "{app}\プライド・コート.exe"; WorkingDir: "{app}"; Comment: "PRIDE COURT"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\PrideCourt.exe"; Description: "PRIDE COURTを起動"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\プライド・コート.exe"; Description: "PRIDE COURTを起動"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent

@@ -334,10 +334,19 @@ namespace PrideCourt.Input
         private Vector2 StickCenter => new Vector2(
             ScaledStickRadius + 33f * UiScale + Screen.safeArea.xMin,
             ScaledStickRadius + 33f * UiScale + Screen.safeArea.yMin);
-        private Rect StrongRect => BottomRightRect(112f, 112f, 32f, 48f);
-        private Rect SafeRect => BottomRightRect(100f, 100f, 150f, 25f);
-        private Rect CardRect => BottomRightRect(92f, 54f, 272f, 152f);
-        private Rect SpecialRect => BottomRightRect(98f, 54f, 164f, 172f);
+
+
+        
+        // 括弧の中：(横幅, 縦幅, 右からの隙間, 下からの隙間)
+        private Rect StrongRect => BottomRightRect(125f, 125f, 32f, 55f);     // Aボタン：一回り大きく
+        private Rect SafeRect => BottomRightRect(115f, 115f, 165f, 25f);    // Bボタン：一回り大きく、左に少し離す
+        private Rect CardRect => BottomRightRect(110f, 65f, 295f, 155f);    // ボタン：文字が収まるように横幅・縦幅を拡大、位置調整
+        private Rect SpecialRect => BottomRightRect(110f, 65f, 175f, 180f);   // 必殺ボタン：文字が収まるように横幅・縦幅を拡大、位置調整
+
+        // private Rect StrongRect => BottomRightRect(112f, 112f, 32f, 48f);
+        // private Rect SafeRect => BottomRightRect(100f, 100f, 150f, 25f);
+        // private Rect CardRect => BottomRightRect(92f, 54f, 272f, 152f);
+        // private Rect SpecialRect => BottomRightRect(98f, 54f, 164f, 172f);
 
         private void EnsureCircleTexture()
         {
