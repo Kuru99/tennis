@@ -53,9 +53,6 @@ EOSを再開する場合の設定方針は [EOS_ONLINE_SETUP.md](Assets/_Project
 ## ライセンスと権利表記
 
 ### Pride Court固有のコード・アート・音声
-
-本リポジトリには、Pride Court Studioが制作したゲームコード、シーン、3Dモデル、キャラクター、カードアート、UI、画像、音声、設定資料が含まれます。これらにはオープンソースライセンスを付与していません（All rights reserved）。
-
 Beta版を遊ぶためのダウンロード・個人評価は許可しますが、コードや素材の再配布、素材だけの抜き出し、改変版の公開、商用利用、他作品への転用は、Pride Court Studioの書面による許可なしに行わないでください。GitHubで公開されていることは、再利用許諾を意味しません。
 
 プロジェクト固有素材の一覧と個別の出典は [THIRD_PARTY_ASSETS.md](Assets/_Project/Docs/THIRD_PARTY_ASSETS.md) にも記載しています。
